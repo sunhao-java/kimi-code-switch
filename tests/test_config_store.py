@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import subprocess
 import sys
 from tempfile import TemporaryDirectory
 import tomllib
@@ -218,6 +219,34 @@ class ConfigStoreTests(unittest.TestCase):
         self.assertIn('config_path = "/tmp/config.toml"', document)
         self.assertIn('theme = "ember"', document)
         self.assertIn('shortcut_scheme = "letters"', document)
+
+    def test_render_homebrew_formula_script_generates_expected_formula(self) -> None:
+        with TemporaryDirectory() as tmp:
+            output = Path(tmp) / "kimi-code-switch.rb"
+
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(PROJECT_ROOT / "scripts" / "render_homebrew_formula.py"),
+                    "--version",
+                    "0.1.0",
+                    "--github-repo",
+                    "example/kimi-code-switch",
+                    "--arm64-sha256",
+                    "a" * 64,
+                    "--amd64-sha256",
+                    "b" * 64,
+                    "--output",
+                    str(output),
+                ],
+                check=True,
+            )
+
+            formula = output.read_text(encoding="utf-8")
+            self.assertIn('homepage "https://github.com/example/kimi-code-switch"', formula)
+            self.assertIn('version "0.1.0"', formula)
+            self.assertIn("kimi-code-switch-v#{version}-macos-arm64.tar.gz", formula)
+            self.assertIn("kimi-code-switch-v#{version}-macos-amd64.tar.gz", formula)
 
     def test_textual_app_mounts_and_populates_tables(self) -> None:
         async def run() -> None:

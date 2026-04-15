@@ -1,0 +1,144 @@
+name: Release Homebrew
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos:
+    name: Build macOS ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-13
+            arch: amd64
+          - runner: macos-14
+            arch: arm64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pyinstaller .
+
+      - name: Build standalone binary
+        run: |
+          pyinstaller --clean --noconfirm --onefile --name kimi-config-panel run_panel.py
+
+      - name: Package release asset
+        env:
+          VERSION: ${{ github.ref_name }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          mkdir -p release
+          VERSION_NO_V="${VERSION#v}"
+          ASSET_NAME="kimi-code-switch-v${VERSION_NO_V}-macos-${ARCH}.tar.gz"
+          tar -C dist -czf "release/${ASSET_NAME}" kimi-config-panel
+          shasum -a 256 "release/${ASSET_NAME}" > "release/${ASSET_NAME}.sha256"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-${{ matrix.arch }}
+          path: release/*
+
+      - name: Publish release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ github.ref_name }}
+        run: |
+          gh release view "${VERSION}" >/dev/null 2>&1 || gh release create "${VERSION}" --generate-notes
+          gh release upload "${VERSION}" release/*.tar.gz release/*.sha256 --clobber
+
+  update-homebrew-tap:
+    name: Update Homebrew tap
+    runs-on: ubuntu-latest
+    needs:
+      - build-macos
+    env:
+      TAP_REPO_URL: ssh://git@gitlab.lodsve.com:9001/tools/homebrew-kimi-code-switch.git
+      TAP_REPO_DIR: homebrew-kimi-code-switch
+      FORMULA_PATH: Formula/kimi-code-switch.rb
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Prepare SSH key for GitLab tap repo
+        env:
+          TAP_GITLAB_SSH_KEY: ${{ secrets.TAP_GITLAB_SSH_KEY }}
+        run: |
+          test -n "${TAP_GITLAB_SSH_KEY}"
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "${TAP_GITLAB_SSH_KEY}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -p 9001 gitlab.lodsve.com >> ~/.ssh/known_hosts
+
+      - name: Compute release checksums
+        id: checksums
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          VERSION_NO_V="${VERSION#v}"
+          ARM64_FILE="artifacts/macos-arm64/kimi-code-switch-v${VERSION_NO_V}-macos-arm64.tar.gz"
+          AMD64_FILE="artifacts/macos-amd64/kimi-code-switch-v${VERSION_NO_V}-macos-amd64.tar.gz"
+          echo "arm64=$(sha256sum "${ARM64_FILE}" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          echo "amd64=$(sha256sum "${AMD64_FILE}" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+      - name: Clone tap repository
+        run: |
+          git clone "${TAP_REPO_URL}" "${TAP_REPO_DIR}"
+
+      - name: Render formula
+        env:
+          VERSION: ${{ github.ref_name }}
+          GITHUB_REPO: ${{ github.repository }}
+          ARM64_SHA256: ${{ steps.checksums.outputs.arm64 }}
+          AMD64_SHA256: ${{ steps.checksums.outputs.amd64 }}
+        run: |
+          VERSION_NO_V="${VERSION#v}"
+          python scripts/render_homebrew_formula.py \
+            --version "${VERSION_NO_V}" \
+            --github-repo "${GITHUB_REPO}" \
+            --arm64-sha256 "${ARM64_SHA256}" \
+            --amd64-sha256 "${AMD64_SHA256}" \
+            --output "${TAP_REPO_DIR}/${FORMULA_PATH}"
+
+      - name: Commit and push tap update
+        working-directory: ${{ env.TAP_REPO_DIR }}
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "${FORMULA_PATH}"
+          if git diff --cached --quiet; then
+            echo "No tap changes to commit."
+            exit 0
+          fi
+          git commit -m "chore: 更新 kimi-code-switch ${VERSION#v}"
+          git push origin HEAD

@@ -64,6 +64,48 @@ python3 -m pip install -e .
 - profile：`~/.kimi/config.profiles.toml`
 - 面板设置：`~/.kimi/config.panel.toml`
 
+## Homebrew 发布
+
+项目已经预留了 Homebrew 发布所需的两部分：
+
+- 主仓库内的 GitHub Actions：见 `.github/workflows/release-homebrew.yml`
+- 同级 tap 仓库：`../homebrew-kimi-code-switch`
+
+发布链路如下：
+
+1. 在 GitHub 主仓库推送 `vX.Y.Z` tag。
+2. Actions 会在 `macos-13` 和 `macos-14` 上构建 `kimi-config-panel` 二进制包。
+3. Actions 会把产物上传到对应 GitHub Release。
+4. Actions 会渲染 `Formula/kimi-code-switch.rb`，并推送到 GitLab tap 仓库 `homebrew-kimi-code-switch`。
+5. 用户执行 `brew update && brew upgrade` 后即可拉到新版。
+
+### 需要的 GitHub Secrets
+
+- `TAP_GITLAB_SSH_KEY`
+  用于让 GitHub Actions 以 SSH 方式推送 GitLab tap 仓库。
+
+### 发布前准备
+
+- 先在 GitLab 创建空仓库 `tools/homebrew-kimi-code-switch`
+- 将同级生成的 tap 仓库内容推到该 GitLab 仓库
+- 在 GitHub 主仓库配置好 `TAP_GITLAB_SSH_KEY`
+
+### tap 仓库命名
+
+按 Homebrew 约定，tap 仓库名使用 `homebrew-<name>`，这里对应：
+
+- 仓库名：`homebrew-kimi-code-switch`
+- formula 路径：`Formula/kimi-code-switch.rb`
+
+### 使用 tap 安装
+
+由于 tap 仓库当前在 GitLab，需要使用自定义 remote：
+
+```bash
+brew tap tools/kimi-code-switch ssh://git@gitlab.lodsve.com:9001/tools/homebrew-kimi-code-switch.git
+brew install tools/kimi-code-switch/kimi-code-switch
+```
+
 ## 说明
 
 - 首次运行如果不存在 profile sidecar，会根据当前 `config.toml` 自动生成一个 `default` profile。
@@ -82,3 +124,4 @@ python3 -m pip install -e .
 - 保存前可以进入“预览”页查看生成的配置文本和 unified diff。
 - 删除 provider 前会检查是否仍被 model 使用。
 - 删除 model 前会检查是否仍被 profile 使用。
+- `scripts/render_homebrew_formula.py` 用于把 GitHub Release 产物信息渲染成 Homebrew formula，供发布工作流和 tap 仓库复用。
