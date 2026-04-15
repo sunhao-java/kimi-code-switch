@@ -41,7 +41,7 @@ from kimi_code_switch.panel_settings import (
 )
 from kimi_code_switch.tui import ConfigPanelApp
 
-from textual.widgets import DataTable, Input, Static, TabbedContent
+from textual.widgets import Button, DataTable, Input, Select, Static, TabbedContent
 
 
 SAMPLE_CONFIG = """
@@ -71,6 +71,8 @@ api_key = "sk-test"
 [loop_control]
 max_steps_per_turn = 100
 """.strip()
+
+EMPTY_CONFIG = ""
 
 
 class ConfigStoreTests(unittest.TestCase):
@@ -303,6 +305,75 @@ class ConfigStoreTests(unittest.TestCase):
                     self.assertEqual(providers.row_count, 1)
                     self.assertEqual(models.row_count, 1)
                     self.assertEqual(settings.row_count, 4)
+
+        asyncio.run(run())
+
+    def test_textual_disables_dependent_actions_when_dependencies_missing(self) -> None:
+        async def run() -> None:
+            with TemporaryDirectory() as tmp:
+                config_path = Path(tmp) / "config.toml"
+                config_path.write_text(EMPTY_CONFIG, encoding="utf-8")
+                state = load_state(config_path)
+                app = ConfigPanelApp(state)
+
+                async with app.run_test() as pilot:
+                    await pilot.pause()
+
+                    self.assertTrue(app.query_one("#profile-model", Select).disabled)
+                    self.assertTrue(app.query_one("#profile-save", Button).disabled)
+                    self.assertTrue(app.query_one("#profile-preview", Button).disabled)
+                    self.assertTrue(app.query_one("#profile-activate", Button).disabled)
+
+                    self.assertTrue(app.query_one("#model-provider", Select).disabled)
+                    self.assertTrue(app.query_one("#model-save", Button).disabled)
+                    self.assertTrue(app.query_one("#model-preview", Button).disabled)
+
+        asyncio.run(run())
+
+    def test_textual_can_create_first_provider_then_first_model_without_deadlock(self) -> None:
+        async def run() -> None:
+            with TemporaryDirectory() as tmp:
+                config_path = Path(tmp) / "config.toml"
+                config_path.write_text(EMPTY_CONFIG, encoding="utf-8")
+                state = load_state(config_path)
+                app = ConfigPanelApp(state)
+
+                async with app.run_test() as pilot:
+                    tabs = app.query_one("#tabs", TabbedContent)
+                    await pilot.pause()
+
+                    tabs.active = "providers"
+                    await pilot.pause()
+                    app.query_one("#provider-name", Input).value = "gateway"
+                    app.query_one("#provider-type", Input).value = "kimi"
+                    app.query_one("#provider-base-url", Input).value = "https://example.test/v1"
+                    app.query_one("#provider-api-key", Input).value = "sk-test"
+                    await pilot.pause()
+                    await pilot.press("ctrl+s")
+                    await pilot.pause()
+
+                    tabs.active = "models"
+                    await pilot.pause()
+                    app.query_one("#model-name", Input).value = "gateway/kimi-k2.5"
+                    app.query_one("#model-provider", Select).value = "gateway"
+                    app.query_one("#model-remote-name", Input).value = "kimi-k2.5"
+                    app.query_one("#model-context-size", Input).value = "262144"
+                    app.query_one("#model-capabilities", Input).value = "thinking"
+                    await pilot.pause()
+                    await pilot.press("ctrl+s")
+                    await pilot.pause()
+
+                    self.assertIn("gateway/kimi-k2.5", app.state.main_config["models"])
+                    self.assertEqual(
+                        app.state.profiles[DEFAULT_PROFILE_NAME].default_model,
+                        "gateway/kimi-k2.5",
+                    )
+                    self.assertEqual(
+                        app.state.main_config["default_model"],
+                        "gateway/kimi-k2.5",
+                    )
+                    status = app.query_one("#status", Static)
+                    self.assertIn("模型已保存", str(status.render()))
 
         asyncio.run(run())
 

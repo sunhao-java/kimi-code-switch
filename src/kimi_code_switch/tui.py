@@ -1323,6 +1323,7 @@ class ConfigPanelApp(App[None]):
         ]
         provider_select.set_options(provider_options)
         provider_select.disabled = not provider_options
+        self._refresh_dependency_controls()
 
     def _load_initial_forms(self) -> None:
         if self.state.profiles:
@@ -1481,9 +1482,17 @@ class ConfigPanelApp(App[None]):
             editable_name=True,
         )
         self.query_one("#profile-name", Input).focus()
+        dependency_message = self._profile_dependency_message()
+        if dependency_message:
+            self._set_status(dependency_message, error=True)
+            return
         self._set_status("已创建新的配置档草稿。")
 
     def _clone_profile_draft(self) -> None:
+        dependency_message = self._profile_dependency_message()
+        if dependency_message:
+            self._set_status(dependency_message, error=True)
+            return
         source = self._profile_from_form()
         source_name = self.query_one("#profile-name", Input).value.strip() or "profile"
         source.label = self.query_one("#profile-label", Input).value.strip() or "配置档"
@@ -1519,9 +1528,17 @@ class ConfigPanelApp(App[None]):
             lock_name=False,
         )
         self.query_one("#model-name", Input).focus()
+        dependency_message = self._model_dependency_message()
+        if dependency_message:
+            self._set_status(dependency_message, error=True)
+            return
         self._set_status("已创建新的模型草稿。")
 
     def _save_profile_form(self) -> None:
+        dependency_message = self._profile_dependency_message()
+        if dependency_message:
+            self._set_status(dependency_message, error=True)
+            return
         data = self._profile_payload_from_form()
         if not data["name"]:
             self._set_status("配置档名称不能为空。", error=True)
@@ -1575,6 +1592,10 @@ class ConfigPanelApp(App[None]):
         self._set_status(f"提供方已保存：{name}")
 
     def _save_model_form(self) -> None:
+        dependency_message = self._model_dependency_message()
+        if dependency_message:
+            self._set_status(dependency_message, error=True)
+            return
         name = self.query_one("#model-name", Input).value.strip()
         provider = self._select_value("#model-provider")
         remote_model = self.query_one("#model-remote-name", Input).value.strip()
@@ -1607,8 +1628,7 @@ class ConfigPanelApp(App[None]):
                 max_context_size=max_context_size,
                 capabilities=capabilities,
             )
-            if self.state.active_profile in self.state.profiles:
-                apply_profile(self.state, self.state.active_profile)
+            self._sync_active_profile_for_model_change(self.state, name)
         except ValueError as exc:
             self._set_status(str(exc), error=True)
             return
@@ -1684,6 +1704,10 @@ class ConfigPanelApp(App[None]):
         self._set_status("模型已删除。")
 
     def _activate_selected_profile(self) -> None:
+        dependency_message = self._profile_dependency_message()
+        if dependency_message:
+            self._set_status(dependency_message, error=True)
+            return
         name = self.query_one("#profile-name", Input).value.strip() or self.selected_profile_name
         if not name:
             self._set_status("请先选择或保存配置档。", error=True)
@@ -2070,6 +2094,45 @@ class ConfigPanelApp(App[None]):
         widget.update(message)
         widget.styles.color = "red" if error else "green"
 
+    def _profile_dependency_message(self) -> str | None:
+        if self.state.main_config["models"]:
+            return None
+        return "当前还没有模型，请先在“模型”页创建模型后再保存、预览或启用配置档。"
+
+    def _model_dependency_message(self) -> str | None:
+        if self.state.main_config["providers"]:
+            return None
+        return "当前还没有提供方，请先在“提供方”页创建提供方后再保存或预览模型。"
+
+    def _dependency_message_for_tab(self, tab_id: str) -> str | None:
+        if tab_id == "profiles":
+            return self._profile_dependency_message()
+        if tab_id == "models":
+            return self._model_dependency_message()
+        return None
+
+    def _refresh_dependency_controls(self) -> None:
+        profile_blocked = self._profile_dependency_message() is not None
+        model_blocked = self._model_dependency_message() is not None
+
+        for selector in ("#profile-preview", "#profile-save", "#profile-clone", "#profile-activate"):
+            self.query_one(selector, Button).disabled = profile_blocked
+
+        for selector in ("#model-preview", "#model-save"):
+            self.query_one(selector, Button).disabled = model_blocked
+
+    def _sync_active_profile_for_model_change(
+        self,
+        state: AppState,
+        fallback_model_name: str,
+    ) -> None:
+        active_profile = state.profiles.get(state.active_profile)
+        if active_profile is None:
+            return
+        if active_profile.default_model not in state.main_config["models"]:
+            active_profile.default_model = fallback_model_name
+        apply_profile(state, state.active_profile)
+
     def _help_text(self) -> str:
         shortcut_info = SHORTCUT_SCHEMES.get(
             self.panel_settings.shortcut_scheme,
@@ -2153,6 +2216,10 @@ class ConfigPanelApp(App[None]):
         )
 
     def _open_preview(self) -> None:
+        dependency_message = self._dependency_message_for_tab(self._preview_source_tab())
+        if dependency_message:
+            self._set_status(dependency_message, error=True)
+            return
         self.query_one("#tabs", TabbedContent).active = "preview"
         self.call_after_refresh(self._render_preview)
 
@@ -2242,6 +2309,9 @@ class ConfigPanelApp(App[None]):
             return draft_state
 
         if source_tab == "models":
+            dependency_message = self._model_dependency_message()
+            if dependency_message:
+                raise ValueError(dependency_message)
             name = self.query_one("#model-name", Input).value.strip()
             provider = self._select_value("#model-provider")
             if not name:
@@ -2266,8 +2336,7 @@ class ConfigPanelApp(App[None]):
                     item.strip() for item in capabilities_raw.split(",") if item.strip()
                 ],
             )
-            if draft_state.active_profile in draft_state.profiles:
-                apply_profile(draft_state, draft_state.active_profile)
+            self._sync_active_profile_for_model_change(draft_state, name)
             return draft_state
 
         return draft_state
