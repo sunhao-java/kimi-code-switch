@@ -9,6 +9,7 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.message import Message
+from textual.screen import ModalScreen
 from textual.widget import Widget
 from textual.widgets import (
     Button,
@@ -25,6 +26,7 @@ from textual.widgets import (
 )
 from textual.widgets._tabbed_content import ContentTabs
 
+from . import __version__
 from .config_store import (
     AppState,
     PROFILE_FILENAME,
@@ -96,6 +98,13 @@ SHORTCUT_SCHEME_OPTIONS = tuple(
     (str(item["label"]), key) for key, item in SHORTCUT_SCHEMES.items()
 )
 
+ABOUT_LINES = (
+    ("英文名", "Hulk Sun"),
+    ("GitHub", "https://github.com/sunhao-java"),
+    ("博客", "https://www.crazy-coder.cn"),
+    ("邮箱", "sunhao.java@gmail.com"),
+)
+
 
 class SummaryCard(Static, can_focus=True):
     BINDINGS = [Binding("enter", "select_card", "进入", show=False)]
@@ -114,6 +123,62 @@ class SummaryCard(Static, can_focus=True):
 
     def on_click(self) -> None:
         self.post_message(self.Selected(self))
+
+
+class AboutDialog(ModalScreen[None]):
+    CSS = """
+    AboutDialog {
+        align: center middle;
+        background: rgba(2, 6, 23, 0.72);
+    }
+
+    #about-dialog {
+        width: 72;
+        max-width: 90%;
+        height: auto;
+        padding: 1 2;
+        background: #0d1828;
+        border: round #3b82f6;
+    }
+
+    #about-title {
+        color: #7dd3fc;
+        text-style: bold;
+        margin-bottom: 1;
+    }
+
+    .about-section {
+        margin-top: 1;
+        color: #d8e5f2;
+    }
+
+    #about-version {
+        color: #fbbf24;
+        text-style: bold;
+    }
+
+    #about-close {
+        margin-top: 1;
+        width: 16;
+    }
+    """
+
+    BINDINGS = [Binding("escape", "close_about", "关闭", show=False)]
+
+    def compose(self) -> ComposeResult:
+        info_lines = "\n".join(f"{label}：{value}" for label, value in ABOUT_LINES)
+        with Vertical(id="about-dialog"):
+            yield Static("关于 Kimi 配置面板", id="about-title")
+            yield Static(f"版本号：{__version__}", id="about-version", classes="about-section")
+            yield Static(info_lines, id="about-body", classes="about-section")
+            yield Static("按 Esc 或点击下方按钮关闭。", classes="about-section")
+            yield Button("关闭", id="about-close", variant="primary")
+
+    def action_close_about(self) -> None:
+        self.dismiss()
+
+    def on_button_pressed(self, _: Button.Pressed) -> None:
+        self.dismiss()
 
 
 def _theme_override_css(
@@ -364,6 +429,23 @@ class ConfigPanelApp(App[None]):
 
     .summary-card.-warm {
         border: round #f59e0b;
+    }
+
+    #about-open {
+        width: 14;
+        min-width: 14;
+        height: 3;
+        margin-left: 1;
+        margin-top: 1;
+        background: #112339;
+        color: #e5edf7;
+        border: round #3b82f6;
+    }
+
+    #about-open:focus {
+        background: #1d4ed8;
+        color: #ffffff;
+        text-style: bold;
     }
 
     #tabs {
@@ -750,6 +832,7 @@ class ConfigPanelApp(App[None]):
             yield SummaryCard("profiles", id="summary-profile", classes="summary-card -hot")
             yield SummaryCard("models", id="summary-model", classes="summary-card -accent")
             yield SummaryCard("providers", id="summary-inventory", classes="summary-card -warm")
+            yield Button("关于", id="about-open")
         with TabbedContent(initial="profiles", id="tabs"):
             with TabPane("配置档 Ctrl+1", id="profiles"):
                 with Horizontal(classes="workspace"):
@@ -963,6 +1046,9 @@ class ConfigPanelApp(App[None]):
     def action_preview_current(self) -> None:
         self._open_preview()
 
+    def action_show_about(self) -> None:
+        self.push_screen(AboutDialog())
+
     def action_switch_to_profiles(self) -> None:
         self._switch_main_tab("profiles")
 
@@ -1084,6 +1170,7 @@ class ConfigPanelApp(App[None]):
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         actions = {
+            "about-open": self.action_show_about,
             "profile-new": self._new_profile_draft,
             "profile-preview": self._open_preview,
             "profile-save": self._save_profile_form,
@@ -2161,6 +2248,7 @@ class ConfigPanelApp(App[None]):
                 "  F6        查看预览与 diff",
                 "  /, Ctrl+F 聚焦当前列表搜索框",
                 "  Esc       列表/编辑/预览区回顶部菜单；搜索框有内容时先清空",
+                "  顶部关于   查看作者信息、主页、博客、邮箱和当前版本",
                 "",
                 "当前快捷键方案补充：",
                 *[f"  {line}" for line in shortcut_info["lines"]],

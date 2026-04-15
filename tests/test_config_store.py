@@ -18,6 +18,7 @@ if str(VENDOR_ROOT) not in sys.path:
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
+from kimi_code_switch import __version__, _homebrew_cellar_version_from_path
 from kimi_code_switch.config_store import (
     build_config_document,
     clone_profile,
@@ -287,6 +288,13 @@ class ConfigStoreTests(unittest.TestCase):
             self.assertIn("kimi-code-switch-v#{version}-macos-arm64.tar.gz", formula)
             self.assertIn("kimi-code-switch-v#{version}-macos-amd64.tar.gz", formula)
 
+    def test_homebrew_cellar_version_can_be_parsed_from_path(self) -> None:
+        parsed = _homebrew_cellar_version_from_path(
+            Path("/opt/homebrew/Cellar/kimi-code-switch/1.0.3/bin/kimi-config-panel")
+        )
+
+        self.assertEqual(parsed, "1.0.3")
+
     def test_textual_app_mounts_and_populates_tables(self) -> None:
         async def run() -> None:
             with TemporaryDirectory() as tmp:
@@ -305,6 +313,30 @@ class ConfigStoreTests(unittest.TestCase):
                     self.assertEqual(providers.row_count, 1)
                     self.assertEqual(models.row_count, 1)
                     self.assertEqual(settings.row_count, 4)
+
+        asyncio.run(run())
+
+    def test_textual_about_dialog_renders_author_info_and_version(self) -> None:
+        async def run() -> None:
+            with TemporaryDirectory() as tmp:
+                config_path = Path(tmp) / "config.toml"
+                config_path.write_text(SAMPLE_CONFIG, encoding="utf-8")
+                state = load_state(config_path)
+                app = ConfigPanelApp(state)
+
+                async with app.run_test() as pilot:
+                    await pilot.pause()
+                    app.action_show_about()
+                    await pilot.pause()
+
+                    title = app.screen.query_one("#about-title", Static)
+                    version = app.screen.query_one("#about-version", Static)
+                    body = app.screen.query_one("#about-body", Static)
+
+                    self.assertIn("关于 Kimi 配置面板", str(title.render()))
+                    self.assertIn(__version__, str(version.render()))
+                    self.assertIn("Hulk Sun", str(body.render()))
+                    self.assertIn("github.com/sunhao-java", str(body.render()))
 
         asyncio.run(run())
 
