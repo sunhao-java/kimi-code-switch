@@ -74,7 +74,7 @@ python3 -m pip install -e .
 发布链路如下：
 
 1. 在 GitHub 主仓库推送 `vX.Y.Z` tag。
-2. Actions 会在 `macos-13` 和 `macos-14` 上构建 `kimi-config-panel` 二进制包。
+2. Actions 会在 GitHub Actions 当前支持的 Intel / Apple Silicon macOS runner 上构建 `kimi-config-panel` 二进制包。
 3. Actions 会把产物上传到对应 GitHub Release。
 4. Actions 会渲染 `Formula/kimi-code-switch.rb`，并推送到 GitHub tap 仓库 `sunhao-java/homebrew-kimi-code-switch`。
 5. 用户执行 `brew update && brew upgrade` 后即可拉到新版。
