@@ -30,6 +30,14 @@ from kimi_code_switch.config_store import (
     upsert_profile,
     upsert_provider,
 )
+from kimi_code_switch.panel_settings import (
+    DEFAULT_SHORTCUT_SCHEME,
+    DEFAULT_THEME,
+    build_panel_settings_document,
+    default_panel_settings,
+    load_panel_settings,
+    save_panel_settings,
+)
 from kimi_code_switch.tui import ConfigPanelApp
 
 from textual.widgets import DataTable, Input, TabbedContent
@@ -166,6 +174,51 @@ class ConfigStoreTests(unittest.TestCase):
             self.assertIn('default_model = "kimi_gateway/kimi-k2.5"', document)
             self.assertIn("[providers.kimi_gateway]", document)
 
+    def test_panel_settings_defaults_and_roundtrip(self) -> None:
+        with TemporaryDirectory() as tmp:
+            settings_path = Path(tmp) / "config.panel.toml"
+
+            defaults = load_panel_settings(settings_path)
+            self.assertEqual(defaults.theme, DEFAULT_THEME)
+            self.assertEqual(defaults.shortcut_scheme, DEFAULT_SHORTCUT_SCHEME)
+            self.assertTrue(defaults.follow_config_profiles)
+
+            saved = default_panel_settings(
+                settings_path=settings_path,
+                config_path=Path(tmp) / "custom-config.toml",
+                profiles_path=Path(tmp) / "custom.profiles.toml",
+                theme="graphite",
+                shortcut_scheme="letters",
+            )
+            save_panel_settings(saved)
+
+            reloaded = load_panel_settings(settings_path)
+            self.assertEqual(
+                reloaded.resolved_config_path(),
+                Path(tmp) / "custom-config.toml",
+            )
+            self.assertEqual(
+                reloaded.resolved_profiles_path(),
+                Path(tmp) / "custom.profiles.toml",
+            )
+            self.assertEqual(reloaded.theme, "graphite")
+            self.assertEqual(reloaded.shortcut_scheme, "letters")
+
+    def test_build_panel_settings_document_contains_current_values(self) -> None:
+        settings = default_panel_settings(
+            settings_path=Path("/tmp/config.panel.toml"),
+            config_path=Path("/tmp/config.toml"),
+            profiles_path=Path("/tmp/config.profiles.toml"),
+            theme="ember",
+            shortcut_scheme="letters",
+        )
+
+        document = build_panel_settings_document(settings)
+
+        self.assertIn('config_path = "/tmp/config.toml"', document)
+        self.assertIn('theme = "ember"', document)
+        self.assertIn('shortcut_scheme = "letters"', document)
+
     def test_textual_app_mounts_and_populates_tables(self) -> None:
         async def run() -> None:
             with TemporaryDirectory() as tmp:
@@ -178,10 +231,12 @@ class ConfigStoreTests(unittest.TestCase):
                     profiles = app.query_one("#profiles-table", DataTable)
                     providers = app.query_one("#providers-table", DataTable)
                     models = app.query_one("#models-table", DataTable)
+                    settings = app.query_one("#settings-table", DataTable)
 
                     self.assertEqual(profiles.row_count, 1)
                     self.assertEqual(providers.row_count, 1)
                     self.assertEqual(models.row_count, 1)
+                    self.assertEqual(settings.row_count, 4)
 
         asyncio.run(run())
 
@@ -200,6 +255,61 @@ class ConfigStoreTests(unittest.TestCase):
 
                     self.assertIn("当前生效模型", str(summary_model.render()))
                     self.assertIn("资源概览", str(summary_inventory.render()))
+                    self.assertIn("F8", str(summary_model.render()))
+                    self.assertIn("F9", str(summary_inventory.render()))
+
+        asyncio.run(run())
+
+    def test_ctrl_number_shortcuts_switch_main_tabs(self) -> None:
+        async def run() -> None:
+            with TemporaryDirectory() as tmp:
+                config_path = Path(tmp) / "config.toml"
+                config_path.write_text(SAMPLE_CONFIG, encoding="utf-8")
+                state = load_state(config_path)
+                app = ConfigPanelApp(state)
+
+                async with app.run_test() as pilot:
+                    tabs = app.query_one("#tabs", TabbedContent)
+                    await pilot.pause()
+
+                    await pilot.press("ctrl+3")
+                    await pilot.pause()
+                    self.assertEqual(tabs.active, "models")
+
+                    await pilot.press("ctrl+4")
+                    await pilot.pause()
+                    self.assertEqual(tabs.active, "preview")
+
+                    await pilot.press("ctrl+5")
+                    await pilot.pause()
+                    self.assertEqual(tabs.active, "settings")
+
+                    await pilot.press("ctrl+6")
+                    await pilot.pause()
+                    self.assertEqual(tabs.active, "help")
+
+        asyncio.run(run())
+
+    def test_function_key_shortcuts_focus_summary_cards(self) -> None:
+        async def run() -> None:
+            with TemporaryDirectory() as tmp:
+                config_path = Path(tmp) / "config.toml"
+                config_path.write_text(SAMPLE_CONFIG, encoding="utf-8")
+                state = load_state(config_path)
+                app = ConfigPanelApp(state)
+
+                async with app.run_test() as pilot:
+                    summary_model = app.query_one("#summary-model")
+                    summary_inventory = app.query_one("#summary-inventory")
+                    await pilot.pause()
+
+                    await pilot.press("f8")
+                    await pilot.pause()
+                    self.assertTrue(summary_model.has_focus)
+
+                    await pilot.press("f9")
+                    await pilot.pause()
+                    self.assertTrue(summary_inventory.has_focus)
 
         asyncio.run(run())
 
@@ -262,6 +372,33 @@ class ConfigStoreTests(unittest.TestCase):
                     self.assertIn('default_model = "kimi_gateway/kimi-k2.5"', app.preview_payload["config_text"])
                     self.assertIn("---", app.preview_payload["config_diff"])
                     self.assertIn("仅看变更", app.preview_payload["compact_text"])
+
+        asyncio.run(run())
+
+    def test_textual_save_settings_persists_panel_settings_file(self) -> None:
+        async def run() -> None:
+            with TemporaryDirectory() as tmp:
+                config_path = Path(tmp) / "config.toml"
+                config_path.write_text(SAMPLE_CONFIG, encoding="utf-8")
+                state = load_state(config_path)
+                settings = default_panel_settings(settings_path=Path(tmp) / "config.panel.toml")
+                app = ConfigPanelApp(state, settings)
+
+                async with app.run_test() as pilot:
+                    tabs = app.query_one("#tabs", TabbedContent)
+                    tabs.active = "settings"
+                    await pilot.pause()
+
+                    app.query_one("#settings-theme").value = "graphite"
+                    app.query_one("#settings-shortcut-scheme").value = "letters"
+                    await pilot.pause()
+
+                    await pilot.press("ctrl+s")
+                    await pilot.pause()
+
+                    saved = load_panel_settings(Path(tmp) / "config.panel.toml")
+                    self.assertEqual(saved.theme, "graphite")
+                    self.assertEqual(saved.shortcut_scheme, "letters")
 
         asyncio.run(run())
 

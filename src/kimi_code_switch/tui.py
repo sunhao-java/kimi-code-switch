@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import difflib
+from pathlib import Path
 
 from rich.syntax import Syntax
 from rich.text import Text
@@ -26,6 +27,7 @@ from textual.widgets._tabbed_content import ContentTabs
 
 from .config_store import (
     AppState,
+    PROFILE_FILENAME,
     Profile,
     apply_profile,
     build_config_document,
@@ -34,10 +36,64 @@ from .config_store import (
     delete_model,
     delete_profile,
     delete_provider,
+    load_state,
     save_state,
     upsert_model,
     upsert_profile,
     upsert_provider,
+)
+from .panel_settings import (
+    DEFAULT_CONFIG_PATH,
+    DEFAULT_SHORTCUT_SCHEME,
+    DEFAULT_THEME,
+    PanelSettings,
+    default_panel_settings,
+    save_panel_settings,
+)
+
+
+THEME_OPTIONS = (
+    ("深海蓝（默认）", "ocean"),
+    ("石墨灰", "graphite"),
+    ("琥珀终端", "ember"),
+)
+
+THEME_LABELS = {value: label for label, value in THEME_OPTIONS}
+
+SHORTCUT_SCHEMES: dict[str, dict[str, object]] = {
+    "default": {
+        "label": "标准方案（默认）",
+        "description": "保留当前 `Ctrl+数字`、`F6`、`F7~F9` 方案。",
+        "aliases": {},
+        "lines": [
+            "页签：Ctrl+1..6",
+            "预览：F6",
+            "摘要卡：F7 / F8 / F9",
+            "搜索：/ 或 Ctrl+F",
+        ],
+    },
+    "letters": {
+        "label": "字母增强",
+        "description": "在标准方案上追加一组更像控制台面板的字母快捷键。",
+        "aliases": {
+            "ctrl+shift+p": "switch_to_profiles",
+            "ctrl+shift+r": "switch_to_providers",
+            "ctrl+shift+m": "switch_to_models",
+            "ctrl+shift+v": "switch_to_preview_tab",
+            "ctrl+shift+s": "switch_to_settings",
+            "ctrl+shift+h": "switch_to_help",
+            "ctrl+shift+o": "preview_current",
+        },
+        "lines": [
+            "页签增强：Ctrl+Shift+P / R / M / V / S / H",
+            "预览增强：Ctrl+Shift+O",
+            "标准方案快捷键仍然可用",
+        ],
+    },
+}
+
+SHORTCUT_SCHEME_OPTIONS = tuple(
+    (str(item["label"]), key) for key, item in SHORTCUT_SCHEMES.items()
 )
 
 
@@ -60,8 +116,201 @@ class SummaryCard(Static, can_focus=True):
         self.post_message(self.Selected(self))
 
 
+def _theme_override_css(
+    theme_name: str,
+    *,
+    screen_bg: str,
+    text: str,
+    header_bg: str,
+    footer_text: str,
+    card_bg: str,
+    card_border: str,
+    card_focus_bg: str,
+    tab_bg: str,
+    tab_focus_border: str,
+    tab_active_bg: str,
+    tab_active_focus_bg: str,
+    tab_text: str,
+    tab_active_text: str,
+    panel_bg: str,
+    panel_focus_bg: str,
+    panel_border: str,
+    panel_focus_border: str,
+    title: str,
+    label: str,
+    input_bg: str,
+    input_focus_bg: str,
+    input_border: str,
+    input_focus_border: str,
+    table_header_bg: str,
+    cursor_bg: str,
+    button_bg: str,
+    button_focus_bg: str,
+    primary_button_bg: str,
+    primary_button_text: str,
+    status: str,
+    preview_meta: str,
+) -> str:
+    return f"""
+    Screen.-theme-{theme_name} {{
+        background: {screen_bg};
+        color: {text};
+    }}
+
+    Screen.-theme-{theme_name} Header,
+    Screen.-theme-{theme_name} Footer {{
+        background: {header_bg};
+    }}
+
+    Screen.-theme-{theme_name} Footer {{
+        color: {footer_text};
+    }}
+
+    Screen.-theme-{theme_name} .summary-card {{
+        background: {card_bg};
+        border: round {card_border};
+        color: {text};
+    }}
+
+    Screen.-theme-{theme_name} .summary-card:focus {{
+        background: {card_focus_bg};
+    }}
+
+    Screen.-theme-{theme_name} #tabs,
+    Screen.-theme-{theme_name} #preview-tabs > ContentTabs,
+    Screen.-theme-{theme_name} #tabs > ContentTabs {{
+        background: {tab_bg};
+    }}
+
+    Screen.-theme-{theme_name} #tabs > ContentTabs,
+    Screen.-theme-{theme_name} #preview-tabs > ContentTabs {{
+        border-bottom: solid {panel_border};
+    }}
+
+    Screen.-theme-{theme_name} #tabs > ContentTabs Tab,
+    Screen.-theme-{theme_name} #preview-tabs > ContentTabs Tab {{
+        color: {tab_text};
+    }}
+
+    Screen.-theme-{theme_name} #tabs > ContentTabs Tab.-active,
+    Screen.-theme-{theme_name} #preview-tabs > ContentTabs Tab.-active {{
+        color: {tab_active_text};
+        background: {tab_active_bg};
+    }}
+
+    Screen.-theme-{theme_name} #tabs > ContentTabs:focus,
+    Screen.-theme-{theme_name} #preview-tabs > ContentTabs:focus {{
+        background: {tab_bg};
+        border-bottom: solid {tab_focus_border};
+    }}
+
+    Screen.-theme-{theme_name} #tabs > ContentTabs:focus Tab,
+    Screen.-theme-{theme_name} #preview-tabs > ContentTabs:focus Tab {{
+        color: {text};
+    }}
+
+    Screen.-theme-{theme_name} #tabs > ContentTabs:focus Tab.-active,
+    Screen.-theme-{theme_name} #preview-tabs > ContentTabs:focus Tab.-active {{
+        background: {tab_active_focus_bg};
+    }}
+
+    Screen.-theme-{theme_name} .list-panel,
+    Screen.-theme-{theme_name} .form-panel,
+    Screen.-theme-{theme_name} .preview-panel {{
+        background: {panel_bg};
+        border: round {panel_border};
+    }}
+
+    Screen.-theme-{theme_name} .list-panel:focus-within,
+    Screen.-theme-{theme_name} .form-panel:focus-within,
+    Screen.-theme-{theme_name} .preview-panel:focus,
+    Screen.-theme-{theme_name} .preview-panel:focus-within {{
+        background: {panel_focus_bg};
+        border: round {panel_focus_border};
+    }}
+
+    Screen.-theme-{theme_name} .panel-title {{
+        color: {title};
+    }}
+
+    Screen.-theme-{theme_name} .field-label,
+    Screen.-theme-{theme_name} .preview-meta {{
+        color: {label};
+    }}
+
+    Screen.-theme-{theme_name} DataTable {{
+        background: {tab_bg};
+        color: {text};
+    }}
+
+    Screen.-theme-{theme_name} DataTable > .datatable--header {{
+        background: {table_header_bg};
+        color: {tab_active_text};
+    }}
+
+    Screen.-theme-{theme_name} DataTable:focus > .datatable--cursor,
+    Screen.-theme-{theme_name} DataTable:focus > .datatable--fixed-cursor,
+    Screen.-theme-{theme_name} DataTable:focus > .datatable--header-cursor {{
+        background: {cursor_bg};
+    }}
+
+    Screen.-theme-{theme_name} Select,
+    Screen.-theme-{theme_name} Input {{
+        background: {input_bg};
+        border: tall {input_border};
+        color: {text};
+    }}
+
+    Screen.-theme-{theme_name} Input:focus,
+    Screen.-theme-{theme_name} Select:focus > SelectCurrent,
+    Screen.-theme-{theme_name} Checkbox:focus {{
+        background: {input_focus_bg};
+        border: tall {input_focus_border};
+        color: {tab_active_text};
+    }}
+
+    Screen.-theme-{theme_name} .button-bar Button {{
+        background: {button_bg};
+        color: {text};
+    }}
+
+    Screen.-theme-{theme_name} .button-bar Button:focus {{
+        background: {button_focus_bg};
+        color: {tab_active_text};
+    }}
+
+    Screen.-theme-{theme_name} Button.-primary {{
+        background: {primary_button_bg};
+        color: {primary_button_text};
+    }}
+
+    Screen.-theme-{theme_name} #status {{
+        color: {status};
+    }}
+
+    Screen.-theme-{theme_name} .preview-meta {{
+        color: {preview_meta};
+    }}
+    """
+
+
 class ConfigPanelApp(App[None]):
     ENABLE_COMMAND_PALETTE = False
+
+    MAIN_TAB_SHORTCUTS = {
+        "profiles": "Ctrl+1",
+        "providers": "Ctrl+2",
+        "models": "Ctrl+3",
+        "preview": "Ctrl+4",
+        "settings": "Ctrl+5",
+        "help": "Ctrl+6",
+    }
+
+    SUMMARY_SHORTCUTS = {
+        "profiles": "F7",
+        "models": "F8",
+        "providers": "F9",
+    }
 
     CSS = """
     Screen {
@@ -99,8 +348,10 @@ class ConfigPanelApp(App[None]):
     }
 
     .summary-card:focus {
-        background: #122438;
-        border: round #7dd3fc;
+        background: #16314d;
+        border: round #f8fafc;
+        color: #f8fbff;
+        text-style: bold;
     }
 
     .summary-card.-accent {
@@ -121,6 +372,40 @@ class ConfigPanelApp(App[None]):
         padding: 0 1 1 1;
     }
 
+    #tabs > ContentTabs {
+        background: #09131f;
+        border-bottom: solid #1b3149;
+        padding: 0 1;
+    }
+
+    #tabs > ContentTabs Tab {
+        color: #7f96b3;
+        background: transparent;
+        padding: 0 2;
+        margin-right: 1;
+    }
+
+    #tabs > ContentTabs Tab.-active {
+        color: #eaf2fb;
+        background: #12304b;
+        text-style: bold;
+    }
+
+    #tabs > ContentTabs:focus {
+        background: #0d1927;
+        border-bottom: solid #3b82f6;
+    }
+
+    #tabs > ContentTabs:focus Tab {
+        color: #b7c7d9;
+    }
+
+    #tabs > ContentTabs:focus Tab.-active {
+        color: #ffffff;
+        background: #1d4ed8;
+        text-style: bold reverse;
+    }
+
     .workspace {
         height: 1fr;
         padding: 1 2;
@@ -134,12 +419,22 @@ class ConfigPanelApp(App[None]):
         margin-right: 1;
     }
 
+    .list-panel:focus-within {
+        border: round #60a5fa;
+        background: #0d1b2c;
+    }
+
     .form-panel {
         width: 48;
         min-width: 42;
         border: round #1b7f7b;
         background: #0d1828;
         padding: 1 2;
+    }
+
+    .form-panel:focus-within {
+        border: round #60a5fa;
+        background: #102033;
     }
 
     .panel-title {
@@ -173,11 +468,40 @@ class ConfigPanelApp(App[None]):
         color: #f3f8fd;
     }
 
+    DataTable:focus {
+        background: #0b1624;
+    }
+
+    DataTable:focus > .datatable--cursor {
+        background: #1d4ed8;
+        color: #f8fbff;
+        text-style: bold;
+    }
+
+    DataTable:focus > .datatable--fixed-cursor,
+    DataTable:focus > .datatable--header-cursor {
+        background: #2563eb;
+        color: #ffffff;
+        text-style: bold;
+    }
+
     Select, Input {
         width: 1fr;
         background: #08111c;
         color: #f3f8fd;
         border: tall #20374f;
+    }
+
+    Input:focus {
+        background: #10263d;
+        border: tall #60a5fa;
+        color: #f8fbff;
+    }
+
+    Select:focus > SelectCurrent {
+        background: #10263d;
+        border: tall #60a5fa;
+        color: #f8fbff;
     }
 
     .checkbox-group {
@@ -187,6 +511,12 @@ class ConfigPanelApp(App[None]):
 
     .checkbox-group Checkbox {
         margin-bottom: 1;
+    }
+
+    Checkbox:focus {
+        background: #10263d;
+        border: tall #60a5fa;
+        color: #f8fbff;
     }
 
     .button-bar {
@@ -200,6 +530,12 @@ class ConfigPanelApp(App[None]):
         background: #112339;
         color: #e5edf7;
         border: none;
+    }
+
+    .button-bar Button:focus {
+        background: #1d4ed8;
+        color: #ffffff;
+        text-style: bold;
     }
 
     Button.-primary {
@@ -224,11 +560,51 @@ class ConfigPanelApp(App[None]):
         color: #94a8c0;
     }
 
+    #preview-tabs > ContentTabs {
+        background: #09131f;
+        border-bottom: solid #1b3149;
+        padding: 0 1;
+    }
+
+    #preview-tabs > ContentTabs Tab {
+        color: #7f96b3;
+        background: transparent;
+        padding: 0 2;
+        margin-right: 1;
+    }
+
+    #preview-tabs > ContentTabs Tab.-active {
+        color: #eaf2fb;
+        background: #12304b;
+        text-style: bold;
+    }
+
+    #preview-tabs > ContentTabs:focus {
+        background: #0d1927;
+        border-bottom: solid #3b82f6;
+    }
+
+    #preview-tabs > ContentTabs:focus Tab {
+        color: #b7c7d9;
+    }
+
+    #preview-tabs > ContentTabs:focus Tab.-active {
+        color: #ffffff;
+        background: #1d4ed8;
+        text-style: bold reverse;
+    }
+
     .preview-panel {
         height: 1fr;
         border: round #334e68;
         background: #0b1625;
         padding: 1;
+    }
+
+    .preview-panel:focus,
+    .preview-panel:focus-within {
+        border: round #60a5fa;
+        background: #102033;
     }
 
     #status {
@@ -240,10 +616,96 @@ class ConfigPanelApp(App[None]):
     #help-view {
         padding: 1 2;
     }
-    """
+
+    #settings-description,
+    #settings-shortcuts-summary,
+    #settings-defaults {
+        height: auto;
+        margin-top: 1;
+        padding: 1;
+        border: round #274b73;
+        background: #09131f;
+        color: #d8e5f2;
+    }
+    """ + _theme_override_css(
+        "graphite",
+        screen_bg="#0b0f14",
+        text="#ebf1f5",
+        header_bg="#11161d",
+        footer_text="#97a6b2",
+        card_bg="#141b23",
+        card_border="#455768",
+        card_focus_bg="#1c2732",
+        tab_bg="#10161d",
+        tab_focus_border="#93c5fd",
+        tab_active_bg="#22303f",
+        tab_active_focus_bg="#475569",
+        tab_text="#9aaab7",
+        tab_active_text="#f8fafc",
+        panel_bg="#121922",
+        panel_focus_bg="#1a2430",
+        panel_border="#49596a",
+        panel_focus_border="#93c5fd",
+        title="#cbd5e1",
+        label="#9fb0c1",
+        input_bg="#0f141a",
+        input_focus_bg="#16212c",
+        input_border="#455768",
+        input_focus_border="#93c5fd",
+        table_header_bg="#1b2430",
+        cursor_bg="#475569",
+        button_bg="#1f2937",
+        button_focus_bg="#475569",
+        primary_button_bg="#cbd5e1",
+        primary_button_text="#0f172a",
+        status="#86efac",
+        preview_meta="#b7c4d1",
+    ) + _theme_override_css(
+        "ember",
+        screen_bg="#120d08",
+        text="#fff3e8",
+        header_bg="#1b120a",
+        footer_text="#d8bfa5",
+        card_bg="#21160e",
+        card_border="#8b5e34",
+        card_focus_bg="#392312",
+        tab_bg="#1a120b",
+        tab_focus_border="#f59e0b",
+        tab_active_bg="#5b3112",
+        tab_active_focus_bg="#b45309",
+        tab_text="#d7b28c",
+        tab_active_text="#fff7ed",
+        panel_bg="#1f140d",
+        panel_focus_bg="#2d1b0f",
+        panel_border="#8b5e34",
+        panel_focus_border="#fbbf24",
+        title="#fbbf24",
+        label="#f2c98f",
+        input_bg="#160f0a",
+        input_focus_bg="#2b180e",
+        input_border="#8b5e34",
+        input_focus_border="#fbbf24",
+        table_header_bg="#3a2415",
+        cursor_bg="#b45309",
+        button_bg="#4a2d17",
+        button_focus_bg="#b45309",
+        primary_button_bg="#f59e0b",
+        primary_button_text="#1c1308",
+        status="#fde68a",
+        preview_meta="#f6d2ac",
+    )
 
     BINDINGS = [
         ("q", "quit", "退出"),
+        Binding("ctrl+1", "switch_to_profiles", "配置档页", show=False),
+        Binding("ctrl+2", "switch_to_providers", "提供方页", show=False),
+        Binding("ctrl+3", "switch_to_models", "模型页", show=False),
+        Binding("ctrl+4", "switch_to_preview_tab", "预览页", show=False),
+        Binding("ctrl+5", "switch_to_settings", "设置页", show=False),
+        Binding("ctrl+6", "switch_to_help", "帮助页", show=False),
+        Binding("f7", "focus_profile_summary", "当前配置档", show=False),
+        Binding("f8", "focus_model_summary", "当前生效模型", show=False),
+        Binding("f9", "focus_inventory_summary", "资源概览", show=False),
         Binding("tab", "next_menu", "下一项", show=False, priority=True),
         Binding("shift+tab", "previous_menu", "上一项", show=False, priority=True),
         ("/", "focus_filter", "搜索"),
@@ -258,15 +720,24 @@ class ConfigPanelApp(App[None]):
         ("f6", "preview_current", "预览"),
     ]
 
-    def __init__(self, state: AppState) -> None:
+    def __init__(
+        self,
+        state: AppState,
+        panel_settings: PanelSettings | None = None,
+    ) -> None:
         super().__init__()
         self.state = state
+        self.panel_settings = panel_settings or default_panel_settings(
+            config_path=state.config_path,
+            profiles_path=state.profiles_path,
+        )
         self.title = "Kimi 配置面板"
-        self.sub_title = "提供方、模型与配置档切换"
+        self.sub_title = "提供方、模型、配置档与面板设置"
 
         self.selected_profile_name: str | None = None
         self.selected_provider_name: str | None = None
         self.selected_model_name: str | None = None
+        self.selected_settings_key = "config_path"
         self.last_editor_tab = "profiles"
         self.preview_payload: dict[str, str] = {}
 
@@ -280,7 +751,7 @@ class ConfigPanelApp(App[None]):
             yield SummaryCard("models", id="summary-model", classes="summary-card -accent")
             yield SummaryCard("providers", id="summary-inventory", classes="summary-card -warm")
         with TabbedContent(initial="profiles", id="tabs"):
-            with TabPane("配置档", id="profiles"):
+            with TabPane("配置档 Ctrl+1", id="profiles"):
                 with Horizontal(classes="workspace"):
                     with Vertical(classes="list-panel"):
                         yield Static("配置档列表", classes="panel-title")
@@ -290,7 +761,7 @@ class ConfigPanelApp(App[None]):
                             classes="filter-input",
                         )
                         yield DataTable(id="profiles-table")
-                    with Vertical(classes="form-panel"):
+                    with VerticalScroll(classes="form-panel"):
                         yield Static("配置档编辑器", classes="panel-title")
                         yield Label("配置档名称", classes="field-label")
                         yield Input(id="profile-name", classes="wide-input")
@@ -319,7 +790,7 @@ class ConfigPanelApp(App[None]):
                             yield Button("启用", id="profile-activate")
                             yield Button("删除", id="profile-delete", variant="error")
 
-            with TabPane("提供方", id="providers"):
+            with TabPane("提供方 Ctrl+2", id="providers"):
                 with Horizontal(classes="workspace"):
                     with Vertical(classes="list-panel"):
                         yield Static("提供方列表", classes="panel-title")
@@ -329,7 +800,7 @@ class ConfigPanelApp(App[None]):
                             classes="filter-input",
                         )
                         yield DataTable(id="providers-table")
-                    with Vertical(classes="form-panel"):
+                    with VerticalScroll(classes="form-panel"):
                         yield Static("提供方编辑器", classes="panel-title")
                         yield Label("提供方名称", classes="field-label")
                         yield Input(id="provider-name", classes="wide-input")
@@ -345,7 +816,7 @@ class ConfigPanelApp(App[None]):
                             yield Button("保存", id="provider-save", variant="primary")
                             yield Button("删除", id="provider-delete", variant="error")
 
-            with TabPane("模型", id="models"):
+            with TabPane("模型 Ctrl+3", id="models"):
                 with Horizontal(classes="workspace"):
                     with Vertical(classes="list-panel"):
                         yield Static("模型列表", classes="panel-title")
@@ -355,7 +826,7 @@ class ConfigPanelApp(App[None]):
                             classes="filter-input",
                         )
                         yield DataTable(id="models-table")
-                    with Vertical(classes="form-panel"):
+                    with VerticalScroll(classes="form-panel"):
                         yield Static("模型编辑器", classes="panel-title")
                         yield Label("模型名称", classes="field-label")
                         yield Input(id="model-name", classes="wide-input")
@@ -377,7 +848,7 @@ class ConfigPanelApp(App[None]):
                             yield Button("保存", id="model-save", variant="primary")
                             yield Button("删除", id="model-delete", variant="error")
 
-            with TabPane("预览", id="preview"):
+            with TabPane("预览 Ctrl+4", id="preview"):
                 with Vertical(classes="preview-shell"):
                     yield Static("", id="preview-meta", classes="preview-meta")
                     with TabbedContent(initial="preview-config", id="preview-tabs"):
@@ -397,18 +868,54 @@ class ConfigPanelApp(App[None]):
                             with VerticalScroll(classes="preview-panel"):
                                 yield Static("", id="preview-compact-body")
 
-            with TabPane("帮助", id="help"):
+            with TabPane("设置 Ctrl+5", id="settings"):
+                with Horizontal(classes="workspace"):
+                    with Vertical(classes="list-panel"):
+                        yield Static("设置列表", classes="panel-title")
+                        yield DataTable(id="settings-table")
+                    with VerticalScroll(classes="form-panel"):
+                        yield Static("面板设置", classes="panel-title")
+                        yield Label("Kimi 主配置文件", classes="field-label")
+                        yield Input(id="settings-config-path", classes="wide-input")
+                        yield Checkbox(
+                            "配置档路径跟随主配置目录",
+                            id="settings-follow-profiles",
+                        )
+                        yield Label("配置档 sidecar 文件", classes="field-label")
+                        yield Input(id="settings-profiles-path", classes="wide-input")
+                        yield Label("TUI 主题", classes="field-label")
+                        yield Select(THEME_OPTIONS, id="settings-theme", allow_blank=False)
+                        yield Label("快捷键方案", classes="field-label")
+                        yield Select(
+                            SHORTCUT_SCHEME_OPTIONS,
+                            id="settings-shortcut-scheme",
+                            allow_blank=False,
+                        )
+                        yield Static("", id="settings-description")
+                        yield Static("", id="settings-shortcuts-summary")
+                        yield Static("", id="settings-defaults")
+                        with Horizontal(classes="button-bar"):
+                            yield Button("恢复默认值", id="settings-reset")
+                            yield Button("重新载入", id="settings-reload")
+                            yield Button("保存设置", id="settings-save", variant="primary")
+
+            with TabPane("帮助 Ctrl+6", id="help"):
                 with VerticalScroll(id="help-view"):
-                    yield Static(self._help_text())
+                    yield Static("", id="help-body")
         yield Static("", id="status")
         yield Footer()
 
     def on_mount(self) -> None:
         self._configure_tables()
+        self._configure_settings_table()
         self._refresh_select_options()
         self._refresh_all_tables()
         self._load_initial_forms()
+        self._load_settings_form()
+        self._refresh_settings_table()
+        self._apply_theme()
         self._refresh_summary()
+        self._refresh_help()
         self.call_after_refresh(self._focus_main_menu)
         self._set_status("界面已就绪。")
 
@@ -429,6 +936,8 @@ class ConfigPanelApp(App[None]):
             self._save_provider_form()
         elif tab == "models":
             self._save_model_form()
+        elif tab == "settings":
+            self._save_settings_form()
 
     def action_delete_item(self) -> None:
         tab = self._active_tab()
@@ -453,6 +962,33 @@ class ConfigPanelApp(App[None]):
 
     def action_preview_current(self) -> None:
         self._open_preview()
+
+    def action_switch_to_profiles(self) -> None:
+        self._switch_main_tab("profiles")
+
+    def action_switch_to_providers(self) -> None:
+        self._switch_main_tab("providers")
+
+    def action_switch_to_models(self) -> None:
+        self._switch_main_tab("models")
+
+    def action_switch_to_preview_tab(self) -> None:
+        self._switch_main_tab("preview")
+
+    def action_switch_to_settings(self) -> None:
+        self._switch_main_tab("settings")
+
+    def action_switch_to_help(self) -> None:
+        self._switch_main_tab("help")
+
+    def action_focus_profile_summary(self) -> None:
+        self._focus_summary_card("profiles")
+
+    def action_focus_model_summary(self) -> None:
+        self._focus_summary_card("models")
+
+    def action_focus_inventory_summary(self) -> None:
+        self._focus_summary_card("providers")
 
     def action_activate_context(self) -> None:
         focused = self.focused
@@ -562,6 +1098,9 @@ class ConfigPanelApp(App[None]):
             "model-preview": self._open_preview,
             "model-save": self._save_model_form,
             "model-delete": self._delete_selected_model,
+            "settings-reset": self._reset_settings_form,
+            "settings-reload": self._reload_state_from_settings,
+            "settings-save": self._save_settings_form,
         }
         action = actions.get(event.button.id or "")
         if action is not None:
@@ -575,6 +1114,12 @@ class ConfigPanelApp(App[None]):
             self._refresh_providers_table(self.selected_provider_name)
         elif widget_id == "models-filter":
             self._refresh_models_table(self.selected_model_name)
+        elif widget_id == "settings-config-path":
+            self._sync_profiles_path_input()
+            self._refresh_settings_table()
+            self._refresh_settings_description()
+        elif widget_id == "settings-profiles-path":
+            self._refresh_settings_table()
 
     def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
         table_id = event.data_table.id or ""
@@ -587,6 +1132,8 @@ class ConfigPanelApp(App[None]):
             self._load_provider_form(name)
         elif table_id == "models-table" and self.query_one_optional("#model-name", Input):
             self._load_model_form(name)
+        elif table_id == "settings-table":
+            self.selected_settings_key = name
 
     def on_data_table_row_selected(self, _: DataTable.RowSelected) -> None:
         self._focus_current_editor()
@@ -599,6 +1146,32 @@ class ConfigPanelApp(App[None]):
         if active not in {"preview", "help"}:
             self.last_editor_tab = active
         self.call_after_refresh(self._sync_visible_form)
+
+    def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
+        if (event.checkbox.id or "") == "settings-follow-profiles":
+            self._sync_profiles_path_input()
+            self._refresh_settings_table()
+            self._refresh_settings_description()
+
+    def on_select_changed(self, event: Select.Changed) -> None:
+        widget_id = event.select.id or ""
+        if widget_id == "settings-theme":
+            self._refresh_settings_description()
+            self._refresh_settings_table()
+        elif widget_id == "settings-shortcut-scheme":
+            self._refresh_settings_description()
+            self._refresh_settings_table()
+
+    def on_key(self, event) -> None:
+        scheme = SHORTCUT_SCHEMES.get(
+            self.panel_settings.shortcut_scheme,
+            SHORTCUT_SCHEMES[DEFAULT_SHORTCUT_SCHEME],
+        )
+        action_name = dict(scheme.get("aliases", {})).get(getattr(event, "key", ""))
+        if not action_name:
+            return
+        event.stop()
+        self.run_action(action_name)
 
     def _configure_tables(self) -> None:
         profiles_table = self.query_one("#profiles-table", DataTable)
@@ -615,6 +1188,12 @@ class ConfigPanelApp(App[None]):
         models_table.cursor_type = "row"
         models_table.zebra_stripes = True
         models_table.add_columns("名称", "提供方", "远端模型", "上下文")
+
+    def _configure_settings_table(self) -> None:
+        settings_table = self.query_one("#settings-table", DataTable)
+        settings_table.cursor_type = "row"
+        settings_table.zebra_stripes = True
+        settings_table.add_columns("项目", "当前值", "默认值")
 
     def _refresh_all_tables(self) -> None:
         self._refresh_profiles_table(self.selected_profile_name or self.state.active_profile)
@@ -687,6 +1266,51 @@ class ConfigPanelApp(App[None]):
             )
         self._move_cursor_to_name(table, names, select_name)
 
+    def _refresh_settings_table(self) -> None:
+        table = self.query_one_optional("#settings-table", DataTable)
+        if table is None:
+            return
+        table.clear(columns=False)
+        current = self._panel_settings_from_form()
+        default = default_panel_settings(settings_path=self.panel_settings.settings_path)
+        rows = [
+            (
+                "config_path",
+                "Kimi 主配置文件",
+                str(current.resolved_config_path()),
+                str(default.resolved_config_path()),
+            ),
+            (
+                "profiles_path",
+                "配置档 sidecar",
+                "跟随主配置目录"
+                if current.follow_config_profiles
+                else str(current.resolved_profiles_path()),
+                str(default.resolved_profiles_path()),
+            ),
+            (
+                "theme",
+                "TUI 主题",
+                THEME_LABELS.get(current.theme, current.theme),
+                THEME_LABELS.get(default.theme, default.theme),
+            ),
+            (
+                "shortcut_scheme",
+                "快捷键方案",
+                str(SHORTCUT_SCHEMES.get(current.shortcut_scheme, {}).get("label", current.shortcut_scheme)),
+                str(
+                    SHORTCUT_SCHEMES.get(
+                        default.shortcut_scheme,
+                        {},
+                    ).get("label", default.shortcut_scheme)
+                ),
+            ),
+        ]
+        keys = [key for key, _, _, _ in rows]
+        for key, title, value, default_value in rows:
+            table.add_row(title, value, default_value, key=key)
+        self._move_cursor_to_name(table, keys, self.selected_settings_key)
+
     def _refresh_select_options(self) -> None:
         model_select = self.query_one("#profile-model", Select)
         model_options = [(name, name) for name in self.state.main_config["models"].keys()]
@@ -720,6 +1344,93 @@ class ConfigPanelApp(App[None]):
             self._load_model_form(models[0])
         else:
             self._new_model_draft()
+
+    def _load_settings_form(self) -> None:
+        config_input = self.query_one("#settings-config-path", Input)
+        config_input.value = str(self.panel_settings.resolved_config_path())
+
+        follow_checkbox = self.query_one("#settings-follow-profiles", Checkbox)
+        follow_checkbox.value = self.panel_settings.follow_config_profiles
+
+        profiles_input = self.query_one("#settings-profiles-path", Input)
+        profiles_input.value = (
+            ""
+            if self.panel_settings.follow_config_profiles
+            else str(self.panel_settings.resolved_profiles_path())
+        )
+
+        self._set_select_value_for_options(
+            "#settings-theme",
+            self.panel_settings.theme,
+            [value for _, value in THEME_OPTIONS],
+        )
+        self._set_select_value_for_options(
+            "#settings-shortcut-scheme",
+            self.panel_settings.shortcut_scheme,
+            list(SHORTCUT_SCHEMES.keys()),
+        )
+        self._sync_profiles_path_input()
+        self._refresh_settings_description()
+
+    def _sync_profiles_path_input(self) -> None:
+        follow_checkbox = self.query_one_optional("#settings-follow-profiles", Checkbox)
+        profiles_input = self.query_one_optional("#settings-profiles-path", Input)
+        if follow_checkbox is None or profiles_input is None:
+            return
+        if follow_checkbox.value:
+            config_path = self._input_path("#settings-config-path", DEFAULT_CONFIG_PATH)
+            profiles_input.value = str(config_path.with_name(PROFILE_FILENAME))
+            profiles_input.disabled = True
+        else:
+            profiles_input.disabled = False
+
+    def _refresh_settings_description(self) -> None:
+        description = self.query_one_optional("#settings-description", Static)
+        shortcuts = self.query_one_optional("#settings-shortcuts-summary", Static)
+        defaults = self.query_one_optional("#settings-defaults", Static)
+        if description is None or shortcuts is None or defaults is None:
+            return
+        theme = self._select_value("#settings-theme") or DEFAULT_THEME
+        shortcut_scheme = self._select_value("#settings-shortcut-scheme") or DEFAULT_SHORTCUT_SCHEME
+        theme_text = {
+            "ocean": "深海蓝：当前主视觉，偏冷色、信息密度高。",
+            "graphite": "石墨灰：更克制、更偏工程控制台。",
+            "ember": "琥珀终端：暖色高对比，更接近经典 console panel。",
+        }.get(theme, theme)
+        shortcut_info = SHORTCUT_SCHEMES.get(
+            shortcut_scheme,
+            SHORTCUT_SCHEMES[DEFAULT_SHORTCUT_SCHEME],
+        )
+        description.update(
+            "\n".join(
+                [
+                    "当前设置说明",
+                    f"主题：{theme_text}",
+                    f"快捷键：{shortcut_info['description']}",
+                    f"面板设置文件：{self.panel_settings.settings_path}",
+                ]
+            )
+        )
+        shortcuts.update(
+            "\n".join(
+                [
+                    "当前快捷键摘要",
+                    *[f"  {line}" for line in shortcut_info["lines"]],
+                ]
+            )
+        )
+        default = default_panel_settings(settings_path=self.panel_settings.settings_path)
+        defaults.update(
+            "\n".join(
+                [
+                    "默认值",
+                    f"  主配置：{default.resolved_config_path()}",
+                    f"  配置档：{default.resolved_profiles_path()}",
+                    f"  主题：{THEME_LABELS.get(default.theme, default.theme)}",
+                    "  快捷键：标准方案（Ctrl+1..6 / F6 / F7~F9）",
+                ]
+            )
+        )
 
     def _load_profile_form(self, name: str) -> None:
         profile = self.state.profiles[name]
@@ -1030,6 +1741,11 @@ class ConfigPanelApp(App[None]):
         self.query_one("#model-context-size", Input).value = max_context_size
         self.query_one("#model-capabilities", Input).value = capabilities
 
+    def _set_settings_form(self, settings: PanelSettings) -> None:
+        self.panel_settings = settings
+        self._load_settings_form()
+        self._refresh_settings_table()
+
     def _profile_payload_from_form(self) -> dict[str, object]:
         return {
             "name": self.query_one("#profile-name", Input).value.strip(),
@@ -1047,6 +1763,93 @@ class ConfigPanelApp(App[None]):
                 "#profile-merge-skills", Checkbox
             ).value,
         }
+
+    def _panel_settings_from_form(self) -> PanelSettings:
+        config_path = self._input_path("#settings-config-path", DEFAULT_CONFIG_PATH)
+        follow_profiles = self.query_one("#settings-follow-profiles", Checkbox).value
+        profiles_default = config_path.with_name(PROFILE_FILENAME)
+        profiles_path = (
+            None
+            if follow_profiles
+            else self._input_path("#settings-profiles-path", profiles_default)
+        )
+        theme = self._select_value("#settings-theme") or DEFAULT_THEME
+        shortcut_scheme = (
+            self._select_value("#settings-shortcut-scheme") or DEFAULT_SHORTCUT_SCHEME
+        )
+        return PanelSettings(
+            settings_path=self.panel_settings.settings_path,
+            config_path=config_path,
+            profiles_path=profiles_path,
+            follow_config_profiles=follow_profiles,
+            theme=theme,
+            shortcut_scheme=shortcut_scheme,
+        )
+
+    def _save_settings_form(self) -> None:
+        candidate = self._panel_settings_from_form()
+        try:
+            state = load_state(
+                candidate.resolved_config_path(),
+                candidate.explicit_profiles_path(),
+            )
+        except Exception as exc:
+            self._set_status(f"设置保存失败：{exc}", error=True)
+            return
+
+        self._apply_panel_settings(candidate, state)
+        self._set_status("面板设置已保存并生效。")
+
+    def _reset_settings_form(self) -> None:
+        defaults = default_panel_settings(settings_path=self.panel_settings.settings_path)
+        self._set_settings_form(defaults)
+        self._set_status("已恢复设置表单默认值，保存后生效。")
+
+    def _reload_state_from_settings(self) -> None:
+        candidate = self._panel_settings_from_form()
+        try:
+            state = load_state(
+                candidate.resolved_config_path(),
+                candidate.explicit_profiles_path(),
+            )
+        except Exception as exc:
+            self._set_status(f"重新载入失败：{exc}", error=True)
+            return
+
+        self._apply_panel_settings(candidate, state, persist=False)
+        self._set_status("已根据当前设置重新载入配置。")
+
+    def _apply_panel_settings(
+        self,
+        settings: PanelSettings,
+        state: AppState,
+        *,
+        persist: bool = True,
+    ) -> None:
+        if persist:
+            save_panel_settings(settings)
+        self.panel_settings = settings
+        self.state = state
+        self.selected_profile_name = None
+        self.selected_provider_name = None
+        self.selected_model_name = None
+        self.provider_name_locked = False
+        self.model_name_locked = False
+        self._refresh_select_options()
+        self._refresh_all_tables()
+        self._load_initial_forms()
+        self._load_settings_form()
+        self._refresh_settings_table()
+        self._apply_theme()
+        self._refresh_summary()
+        self._refresh_help()
+
+    def _apply_theme(self) -> None:
+        screen = self.screen
+        for theme_name in ("graphite", "ember"):
+            screen.remove_class(f"-theme-{theme_name}")
+        if self.panel_settings.theme in {"graphite", "ember"}:
+            screen.add_class(f"-theme-{self.panel_settings.theme}")
 
     def _profile_from_form(self) -> Profile:
         payload = self._profile_payload_from_form()
@@ -1067,12 +1870,32 @@ class ConfigPanelApp(App[None]):
         elif options:
             select.value = options[0]
 
+    def _set_select_value_for_options(
+        self,
+        selector: str,
+        value: str,
+        options: list[str],
+    ) -> None:
+        select = self.query_one(selector, Select)
+        if select.disabled:
+            return
+        if value in options:
+            select.value = value
+        elif options:
+            select.value = options[0]
+
     def _select_value(self, selector: str) -> str:
         select = self.query_one(selector, Select)
         value = select.value
         if value in (None, Select.BLANK, Select.NULL):
             return ""
         return str(value)
+
+    def _input_path(self, selector: str, default_path: Path) -> Path:
+        raw = self.query_one(selector, Input).value.strip()
+        if not raw:
+            return default_path.expanduser()
+        return Path(raw).expanduser()
 
     def _move_cursor_to_name(
         self, table: DataTable, names: list[str], target_name: str | None
@@ -1110,6 +1933,23 @@ class ConfigPanelApp(App[None]):
 
     def _focus_main_menu(self) -> None:
         self.set_focus(self._main_tabs_widget())
+
+    def _switch_main_tab(self, tab_id: str) -> None:
+        self.query_one("#tabs", TabbedContent).active = tab_id
+        self._focus_main_menu()
+        self._set_status(f"已切换到{self._tab_label(tab_id)}。")
+
+    def _focus_summary_card(self, tab_id: str) -> None:
+        selector = {
+            "profiles": "#summary-profile",
+            "models": "#summary-model",
+            "providers": "#summary-inventory",
+        }.get(tab_id)
+        if not selector:
+            return
+        widget = self.query_one(selector, SummaryCard)
+        self.set_focus(widget)
+        self._set_status(f"已聚焦{self._tab_label(tab_id)}摘要卡，按回车进入列表。")
 
     def _activate_summary_card(self, card: SummaryCard) -> None:
         self.query_one("#tabs", TabbedContent).active = card.target_tab
@@ -1161,12 +2001,15 @@ class ConfigPanelApp(App[None]):
             "profiles": "#profiles-table",
             "providers": "#providers-table",
             "models": "#models-table",
+            "settings": "#settings-table",
         }.get(self._active_tab())
         if not selector:
             return None
         return self.query_one(selector, DataTable)
 
     def _editor_entry_widget(self, tab_id: str) -> Widget | None:
+        if tab_id == "settings":
+            return self._settings_entry_widget()
         candidates = {
             "profiles": [
                 "#profile-name",
@@ -1195,19 +2038,43 @@ class ConfigPanelApp(App[None]):
                 return widget
         return None
 
+    def _settings_entry_widget(self) -> Widget | None:
+        selected_key = self.selected_settings_key or "config_path"
+        candidates = {
+            "config_path": ["#settings-config-path"],
+            "profiles_path": ["#settings-follow-profiles", "#settings-profiles-path"],
+            "theme": ["#settings-theme"],
+            "shortcut_scheme": ["#settings-shortcut-scheme"],
+        }.get(selected_key, ["#settings-config-path"])
+        for selector in candidates:
+            widget = self.query_one(selector)
+            if selector == "#settings-profiles-path" and getattr(widget, "disabled", False):
+                continue
+            return widget
+        return self.query_one("#settings-config-path", Input)
+
     def _set_status(self, message: str, *, error: bool = False) -> None:
         widget = self.query_one("#status", Static)
         widget.update(message)
         widget.styles.color = "red" if error else "green"
 
     def _help_text(self) -> str:
+        shortcut_info = SHORTCUT_SCHEMES.get(
+            self.panel_settings.shortcut_scheme,
+            SHORTCUT_SCHEMES[DEFAULT_SHORTCUT_SCHEME],
+        )
         return "\n".join(
             [
                 f"主配置文件：{self.state.config_path}",
                 f"配置档文件：{self.state.profiles_path}",
+                f"面板设置文件：{self.panel_settings.settings_path}",
+                f"TUI 主题：{THEME_LABELS.get(self.panel_settings.theme, self.panel_settings.theme)}",
+                f"快捷键方案：{shortcut_info['label']}",
                 "",
                 "快捷键：",
                 "  q         退出",
+                "  Ctrl+1~6  切换配置档 / 提供方 / 模型 / 预览 / 设置 / 帮助",
+                "  F7~F9      聚焦上方摘要卡，回车进入对应列表",
                 "  Tab       顶部菜单切换；预览下层标签内切换预览页签；其他场景切到下一项",
                 "  Shift+Tab 列表/编辑区回顶部菜单，其他场景回上一项",
                 "  Enter     菜单进入列表；预览页进入下层标签；列表进入右侧编辑区",
@@ -1220,13 +2087,20 @@ class ConfigPanelApp(App[None]):
                 "  /, Ctrl+F 聚焦当前列表搜索框",
                 "  Esc       列表/编辑/预览区回顶部菜单；搜索框有内容时先清空",
                 "",
+                "当前快捷键方案补充：",
+                *[f"  {line}" for line in shortcut_info["lines"]],
+                "",
                 "说明：",
                 "  配置档用于维护多套默认组合，并将当前生效项写回 config.toml。",
                 "  提供方和模型一旦创建后名称固定，如需改名请新建。",
                 "  模型与提供方选择都通过下拉完成，无需手输。",
                 "  列表支持实时搜索过滤，预览页可先看生成结果再保存。",
+                "  设置页可调整配置路径、主题风格和快捷键方案，并提供默认值参考。",
             ]
         )
+
+    def _refresh_help(self) -> None:
+        self.query_one("#help-body", Static).update(self._help_text())
 
     def _sync_visible_form(self) -> None:
         tab = self._active_tab()
@@ -1236,8 +2110,13 @@ class ConfigPanelApp(App[None]):
             self._load_provider_form(self.selected_provider_name)
         elif tab == "models" and self.selected_model_name:
             self._load_model_form(self.selected_model_name)
+        elif tab == "settings":
+            self._load_settings_form()
+            self._refresh_settings_table()
         elif tab == "preview":
             self._render_preview()
+        elif tab == "help":
+            self._refresh_help()
 
     def _refresh_summary(self) -> None:
         active_profile = self.state.active_profile or "未设置"
@@ -1246,22 +2125,19 @@ class ConfigPanelApp(App[None]):
         active_provider = str(active_model_config.get("provider", "")) or "未设置"
 
         self.query_one("#summary-profile", SummaryCard).update(
-            "当前配置档\n"
+            f"当前配置档 ({self.SUMMARY_SHORTCUTS['profiles']})\n"
             f"{active_profile}\n"
-            f"共 {len(self.state.profiles)} 个配置档\n"
-            "回车进入配置档列表"
+            f"回车进入列表 · 共 {len(self.state.profiles)} 个"
         )
         self.query_one("#summary-model", SummaryCard).update(
-            "当前生效模型\n"
+            f"当前生效模型 ({self.SUMMARY_SHORTCUTS['models']})\n"
             f"{active_model}\n"
-            f"提供方：{active_provider}\n"
-            "回车进入模型列表"
+            f"提供方：{active_provider} · 回车进入列表"
         )
         self.query_one("#summary-inventory", SummaryCard).update(
-            "资源概览\n"
+            f"资源概览 ({self.SUMMARY_SHORTCUTS['providers']})\n"
             f"{len(self.state.main_config['providers'])} 个提供方\n"
-            f"{len(self.state.main_config['models'])} 个模型\n"
-            "回车进入提供方列表"
+            f"{len(self.state.main_config['models'])} 个模型 · 回车进入列表"
         )
 
     def _open_preview(self) -> None:
@@ -1387,7 +2263,9 @@ class ConfigPanelApp(App[None]):
     def _preview_source_tab(self) -> str:
         active = self._active_tab()
         if active in {"preview", "help"}:
-            return self.last_editor_tab
+            if self.last_editor_tab in {"profiles", "providers", "models"}:
+                return self.last_editor_tab
+            return "profiles"
         return active
 
     def _read_file_text(self, path) -> str:
@@ -1549,7 +2427,7 @@ class ConfigPanelApp(App[None]):
         }
 
     def _is_editor_widget(self, widget: object) -> bool:
-        if self._active_tab() not in {"profiles", "providers", "models"}:
+        if self._active_tab() not in {"profiles", "providers", "models", "settings"}:
             return False
         if widget is None:
             return False
@@ -1590,6 +2468,14 @@ class ConfigPanelApp(App[None]):
             "model-preview",
             "model-save",
             "model-delete",
+            "settings-config-path",
+            "settings-follow-profiles",
+            "settings-profiles-path",
+            "settings-theme",
+            "settings-shortcut-scheme",
+            "settings-reset",
+            "settings-reload",
+            "settings-save",
         }:
             return True
         return isinstance(widget, (Input, Select, Checkbox, Button))
@@ -1605,6 +2491,7 @@ class ConfigPanelApp(App[None]):
             "providers": "提供方",
             "models": "模型",
             "preview": "预览",
+            "settings": "设置",
             "help": "帮助",
         }
         return labels.get(tab_id, tab_id)
