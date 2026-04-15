@@ -165,7 +165,13 @@ def apply_profile(state: AppState, profile_name: str) -> None:
     if profile is None:
         raise ValueError(f"Profile not found: {profile_name}")
     if profile.default_model not in state.main_config["models"]:
-        raise ValueError(f"Profile model does not exist: {profile.default_model}")
+        raise ValueError(
+            _format_missing_model_error(
+                profile.default_model,
+                state.main_config["models"],
+                context=f"配置档 {profile.name}",
+            )
+        )
 
     for key in PROFILE_KEYS:
         state.main_config[key] = getattr(profile, key)
@@ -234,7 +240,13 @@ def upsert_profile(
     merge_all_available_skills: bool,
 ) -> None:
     if default_model not in state.main_config["models"]:
-        raise ValueError(f"Model not found: {default_model}")
+        raise ValueError(
+            _format_missing_model_error(
+                default_model,
+                state.main_config["models"],
+                context=f"配置档 {name or '（未命名）'}",
+            )
+        )
 
     state.profiles[name] = Profile(
         name=name,
@@ -340,3 +352,27 @@ def _read_toml(path: Path) -> dict[str, Any]:
     with path.open("rb") as handle:
         data = tomllib.load(handle)
     return dict(data)
+
+
+def _format_missing_model_error(
+    model_name: str,
+    models: dict[str, Any],
+    *,
+    context: str,
+) -> str:
+    normalized_name = model_name or "（空）"
+    model_keys = list(models.keys())
+    if model_keys:
+        preview = "、".join(model_keys[:3])
+        if len(model_keys) > 3:
+            preview = f"{preview} 等 {len(model_keys)} 个"
+        available_hint = f"可用模型 key：{preview}。"
+    else:
+        available_hint = "当前还没有任何模型，请先在“模型”页创建模型。"
+
+    return (
+        f"{context}引用的默认模型不存在：{normalized_name}。"
+        "这里需要填写 [models] 下的模型 key，不是 model 字段值。"
+        f"{available_hint}"
+        "请先创建对应模型，或把配置档默认模型改成现有模型。"
+    )

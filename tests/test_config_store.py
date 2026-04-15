@@ -41,7 +41,7 @@ from kimi_code_switch.panel_settings import (
 )
 from kimi_code_switch.tui import ConfigPanelApp
 
-from textual.widgets import DataTable, Input, TabbedContent
+from textual.widgets import DataTable, Input, Static, TabbedContent
 
 
 SAMPLE_CONFIG = """
@@ -148,6 +148,43 @@ class ConfigStoreTests(unittest.TestCase):
 
             with self.assertRaisesRegex(ValueError, "still used by profile"):
                 delete_model(state, "kimi_gateway/kimi-k2.5")
+
+    def test_apply_profile_missing_model_error_is_actionable(self) -> None:
+        with TemporaryDirectory() as tmp:
+            config_path = Path(tmp) / "config.toml"
+            config_path.write_text(SAMPLE_CONFIG, encoding="utf-8")
+            state = load_state(config_path)
+            state.profiles[DEFAULT_PROFILE_NAME].default_model = "kimi-k2.5"
+
+            with self.assertRaisesRegex(
+                ValueError,
+                "这里需要填写 \\[models\\] 下的模型 key，不是 model 字段值",
+            ):
+                apply_profile(state, DEFAULT_PROFILE_NAME)
+
+    def test_upsert_profile_missing_model_error_lists_available_keys(self) -> None:
+        with TemporaryDirectory() as tmp:
+            config_path = Path(tmp) / "config.toml"
+            config_path.write_text(SAMPLE_CONFIG, encoding="utf-8")
+            state = load_state(config_path)
+
+            with self.assertRaisesRegex(
+                ValueError,
+                "可用模型 key：kimi_gateway/kimi-k2.5",
+            ):
+                upsert_profile(
+                    state,
+                    name="broken",
+                    label="Broken",
+                    default_model="kimi-k2.5",
+                    default_thinking=True,
+                    default_yolo=False,
+                    default_plan_mode=False,
+                    default_editor="",
+                    theme="dark",
+                    show_thinking_stream=False,
+                    merge_all_available_skills=False,
+                )
 
     def test_clone_profile_copies_selected_profile_values(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -401,6 +438,26 @@ class ConfigStoreTests(unittest.TestCase):
                     self.assertIn('default_model = "kimi_gateway/kimi-k2.5"', app.preview_payload["config_text"])
                     self.assertIn("---", app.preview_payload["config_diff"])
                     self.assertIn("仅看变更", app.preview_payload["compact_text"])
+
+        asyncio.run(run())
+
+    def test_textual_activate_profile_shows_actionable_missing_model_error(self) -> None:
+        async def run() -> None:
+            with TemporaryDirectory() as tmp:
+                config_path = Path(tmp) / "config.toml"
+                config_path.write_text(SAMPLE_CONFIG, encoding="utf-8")
+                state = load_state(config_path)
+                state.profiles[DEFAULT_PROFILE_NAME].default_model = "kimi-k2.5"
+                app = ConfigPanelApp(state)
+
+                async with app.run_test() as pilot:
+                    await pilot.pause()
+                    app.action_activate_profile()
+                    await pilot.pause()
+
+                    status = app.query_one("#status", Static)
+                    self.assertIn("模型 key", str(status.render()))
+                    self.assertIn("kimi_gateway/kimi-k2.5", str(status.render()))
 
         asyncio.run(run())
 

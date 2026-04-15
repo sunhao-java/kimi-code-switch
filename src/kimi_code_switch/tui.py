@@ -1530,9 +1530,13 @@ class ConfigPanelApp(App[None]):
             self._set_status("请先选择默认模型。", error=True)
             return
 
-        upsert_profile(self.state, **data)
-        if self.state.active_profile == data["name"]:
-            apply_profile(self.state, data["name"])
+        try:
+            upsert_profile(self.state, **data)
+            if self.state.active_profile == data["name"]:
+                apply_profile(self.state, data["name"])
+        except ValueError as exc:
+            self._set_status(str(exc), error=True)
+            return
         save_state(self.state)
         self.selected_profile_name = data["name"]
         self._refresh_profiles_table(data["name"])
@@ -1594,16 +1598,20 @@ class ConfigPanelApp(App[None]):
             return
 
         capabilities = [item.strip() for item in capabilities_raw.split(",") if item.strip()]
-        upsert_model(
-            self.state,
-            name=name,
-            provider=provider,
-            model=remote_model,
-            max_context_size=max_context_size,
-            capabilities=capabilities,
-        )
-        if self.state.active_profile in self.state.profiles:
-            apply_profile(self.state, self.state.active_profile)
+        try:
+            upsert_model(
+                self.state,
+                name=name,
+                provider=provider,
+                model=remote_model,
+                max_context_size=max_context_size,
+                capabilities=capabilities,
+            )
+            if self.state.active_profile in self.state.profiles:
+                apply_profile(self.state, self.state.active_profile)
+        except ValueError as exc:
+            self._set_status(str(exc), error=True)
+            return
         save_state(self.state)
         self.selected_model_name = name
         self.model_name_locked = True
@@ -1683,7 +1691,11 @@ class ConfigPanelApp(App[None]):
         if name not in self.state.profiles:
             self._set_status("请先保存配置档，再执行启用。", error=True)
             return
-        apply_profile(self.state, name)
+        try:
+            apply_profile(self.state, name)
+        except ValueError as exc:
+            self._set_status(str(exc), error=True)
+            return
         save_state(self.state)
         self.selected_profile_name = name
         self._refresh_profiles_table(name)
