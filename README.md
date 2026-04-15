@@ -76,19 +76,19 @@ python3 -m pip install -e .
 1. 在 GitHub 主仓库推送 `vX.Y.Z` tag。
 2. Actions 会在 `macos-13` 和 `macos-14` 上构建 `kimi-config-panel` 二进制包。
 3. Actions 会把产物上传到对应 GitHub Release。
-4. Actions 会渲染 `Formula/kimi-code-switch.rb`，并推送到 GitLab tap 仓库 `homebrew-kimi-code-switch`。
+4. Actions 会渲染 `Formula/kimi-code-switch.rb`，并推送到 GitHub tap 仓库 `sunhao-java/homebrew-kimi-code-switch`。
 5. 用户执行 `brew update && brew upgrade` 后即可拉到新版。
 
 ### 需要的 GitHub Secrets
 
-- `TAP_GITLAB_SSH_KEY`
-  用于让 GitHub Actions 以 SSH 方式推送 GitLab tap 仓库。
+- `TAP_GITHUB_TOKEN`
+  用于让 GitHub Actions 推送 `sunhao-java/homebrew-kimi-code-switch` 仓库。建议使用 fine-grained PAT，只授予该 tap 仓库的 `Contents: Read and write` 权限。
 
 ### 发布前准备
 
-- 先在 GitLab 创建空仓库 `tools/homebrew-kimi-code-switch`
-- 将同级生成的 tap 仓库内容推到该 GitLab 仓库
-- 在 GitHub 主仓库配置好 `TAP_GITLAB_SSH_KEY`
+- 在 GitHub 创建仓库 `sunhao-java/homebrew-kimi-code-switch`
+- 确保 tap 仓库默认分支已存在，并包含 `Formula/` 目录
+- 在 GitHub 主仓库配置好 `TAP_GITHUB_TOKEN`
 
 ### tap 仓库命名
 
@@ -99,11 +99,11 @@ python3 -m pip install -e .
 
 ### 使用 tap 安装
 
-由于 tap 仓库当前在 GitLab，需要使用自定义 remote：
+tap 仓库已经切到 GitHub，按 Homebrew 约定使用：
 
 ```bash
-brew tap tools/kimi-code-switch ssh://git@gitlab.lodsve.com:9001/tools/homebrew-kimi-code-switch.git
-brew install tools/kimi-code-switch/kimi-code-switch
+brew tap sunhao-java/kimi-code-switch
+brew install sunhao-java/kimi-code-switch/kimi-code-switch
 ```
 
 ## 说明

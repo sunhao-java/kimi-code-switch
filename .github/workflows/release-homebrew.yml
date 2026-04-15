@@ -70,7 +70,7 @@ jobs:
     needs:
       - build-macos
     env:
-      TAP_REPO_URL: ssh://git@gitlab.lodsve.com:9001/tools/homebrew-kimi-code-switch.git
+      TAP_REPO_URL: https://github.com/sunhao-java/homebrew-kimi-code-switch.git
       TAP_REPO_DIR: homebrew-kimi-code-switch
       FORMULA_PATH: Formula/kimi-code-switch.rb
 
@@ -88,15 +88,11 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Prepare SSH key for GitLab tap repo
+      - name: Configure GitHub token for tap repo
         env:
-          TAP_GITLAB_SSH_KEY: ${{ secrets.TAP_GITLAB_SSH_KEY }}
+          TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
         run: |
-          test -n "${TAP_GITLAB_SSH_KEY}"
-          install -m 700 -d ~/.ssh
-          printf '%s\n' "${TAP_GITLAB_SSH_KEY}" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -p 9001 gitlab.lodsve.com >> ~/.ssh/known_hosts
+          test -n "${TAP_GITHUB_TOKEN}"
 
       - name: Compute release checksums
         id: checksums
@@ -110,8 +106,10 @@ jobs:
           echo "amd64=$(sha256sum "${AMD64_FILE}" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
 
       - name: Clone tap repository
+        env:
+          TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
         run: |
-          git clone "${TAP_REPO_URL}" "${TAP_REPO_DIR}"
+          git clone "https://x-access-token:${TAP_GITHUB_TOKEN}@${TAP_REPO_URL#https://}" "${TAP_REPO_DIR}"
 
       - name: Render formula
         env:
