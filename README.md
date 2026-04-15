@@ -79,6 +79,10 @@ python3 -m pip install -e .
 4. Actions 会渲染 `Formula/kimi-code-switch.rb`，并推送到 GitHub tap 仓库 `sunhao-java/homebrew-kimi-code-switch`。
 5. 用户执行 `brew update && brew upgrade` 后即可拉到新版。
 
+补充说明：
+
+- 发布构建会通过 `pyinstaller_hooks/hook-textual.py` 显式收集 `Textual` 的懒加载模块，避免 Homebrew 安装后的独立二进制在运行时缺少 `textual.widgets.*` 内部模块。
+
 ### 需要的 GitHub Secrets
 
 - `TAP_GITHUB_TOKEN`

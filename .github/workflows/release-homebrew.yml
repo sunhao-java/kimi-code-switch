@@ -37,7 +37,13 @@ jobs:
 
       - name: Build standalone binary
         run: |
-          pyinstaller --clean --noconfirm --onefile --name kimi-config-panel run_panel.py
+          pyinstaller \
+            --clean \
+            --noconfirm \
+            --onefile \
+            --additional-hooks-dir pyinstaller_hooks \
+            --name kimi-config-panel \
+            run_panel.py
 
       - name: Package release asset
         env:
