@@ -14,28 +14,30 @@
 ## 运行
 
 ```bash
-cd /Users/sunhao/Documents/workspaces/lodsve/kimi-code-switch
-python3 run_panel.py
+cd /Users/sunhao/Documents/tools/kimi-code-switch
+python3.9 run_panel.py
 ```
 
 或者安装成命令：
 
 ```bash
-python3 -m pip install -e .
-kimi-config-panel
+python3.9 -m pip install -e .
+kimi-config-switch
 ```
 
-项目内已经放了一份本地 `.vendor` 依赖目录，入口会自动加载；如果你要重新安装依赖，也可以执行：
+项目需要 Python 3.9+。发布包或本地构建可以携带 `.vendor` 依赖目录，入口会自动加载；如果你要重新安装依赖，也可以执行：
 
 ```bash
-python3 -m pip install -e .
+python3.9 -m pip install -e .
 ```
 
 ## 键位
 
 - `Left/Right` 或 `h/l`: 切换页签
-- `Ctrl+1..6`: 快速切换 `配置档 / 提供方 / 模型 / 预览 / 设置 / 帮助`
-- `F7..F9`: 快速聚焦上方 `当前配置档 / 当前生效模型 / 资源概览` 卡片，再按 `Enter` 进入对应列表
+- `Ctrl+1..6`: 快速切换 `配置Profile / 提供方 / 模型 / 预览 / 设置 / 帮助`
+- `F7..F9`: 快速聚焦上方 `当前配置Profile / 当前生效模型 / 提供方` 卡片，再按 `Enter` 进入对应列表
+- `F10`: 打开“关于”信息
+- `↑`: 顶部页签聚焦时，进入对应的上方摘要卡
 - `Tab`: 顶部菜单切换；预览下层标签内切换预览页签；其他场景切到下一项
 - `Shift+Tab`: 列表/编辑区回顶部菜单，其他场景回上一项
 - `Enter`: 菜单进入列表；预览页进入下层标签；列表进入右侧编辑区
@@ -43,8 +45,8 @@ python3 -m pip install -e .
 - `Ctrl+N`: 当前页新建草稿
 - `Ctrl+S`: 保存当前表单
 - `Ctrl+D`: 删除当前选中项
-- `Ctrl+C`: 在“配置档”页克隆当前配置档为新草稿
-- `Ctrl+A`: 在“配置档”页激活当前配置档
+- `Ctrl+C`: 在“配置Profile”页克隆当前配置Profile为新草稿
+- `Ctrl+A`: 在“配置Profile”页激活当前配置Profile
 - `/` 或 `Ctrl+F`: 聚焦当前列表页搜索框
 - `Esc`: 列表页、编辑页、预览区返回顶部菜单；搜索框有内容时先清空搜索
 - `F6`: 打开“预览”页，查看将写回的 `config.toml` / `config.profiles.toml` 以及 diff
@@ -53,7 +55,7 @@ python3 -m pip install -e .
 设置页默认值：
 
 - 主配置文件：`~/.kimi/config.toml`
-- 配置档文件：默认跟随主配置目录，指向 `~/.kimi/config.profiles.toml`
+- 配置Profile文件：默认跟随主配置目录，指向 `~/.kimi/config.profiles.toml`
 - 面板设置文件：`~/.kimi/config.panel.toml`
 - TUI 主题：`深海蓝（默认）`
 - 快捷键方案：`标准方案（默认）`
@@ -74,10 +76,11 @@ python3 -m pip install -e .
 发布链路如下：
 
 1. 在 GitHub 主仓库推送 `vX.Y.Z` tag。
-2. Actions 会在 GitHub Actions 当前支持的 Intel / Apple Silicon macOS runner 上构建 `kimi-config-panel` 二进制包。
+2. Actions 会在 GitHub Actions 当前支持的 Intel / Apple Silicon macOS runner 上构建 `kimi-config-switch` 二进制包。
 3. Actions 会把产物上传到对应 GitHub Release。
 4. Actions 会渲染 `Formula/kimi-code-switch.rb`，并推送到 GitHub tap 仓库 `sunhao-java/homebrew-kimi-code-switch`。
-5. 用户执行 `brew update && brew upgrade` 后即可拉到新版。
+5. tap formula 会直接安装发布资产中的 `kimi-config-switch` 命令。
+6. 用户执行 `brew update && brew upgrade kimi-code-switch` 后即可拉到新版。
 
 补充说明：
 
@@ -106,21 +109,22 @@ python3 -m pip install -e .
 tap 仓库已经切到 GitHub，按 Homebrew 约定使用：
 
 ```bash
-brew tap sunhao-java/kimi-code-switch
-brew install sunhao-java/kimi-code-switch/kimi-code-switch
+brew tap sunhaojava/kimi-code-switch git@github.com:sunhao-java/homebrew-kimi-code-switch.git
+brew install kimi-code-switch
+kimi-config-switch
 ```
 
 ## 说明
 
 - 首次运行如果不存在 profile sidecar，会根据当前 `config.toml` 自动生成一个 `default` profile。
-- 配置档的默认模型通过列表选择，不需要手输。
-- 模型绑定的提供方通过列表选择，不需要手输。
+- 配置Profile的默认模型通过列表选择，不需要手输。
+- 模型绑定的提供方通过列表选择，模型名称输入框只填写不含提供方前缀的后缀。
 - 顶部摘要卡支持聚焦后回车直达对应列表。
 - 设置页支持修改 `kimi-code-cli` 主配置路径、profile sidecar 路径、TUI 主题和快捷键方案。
 - 设置页提供默认值参考，并支持“恢复默认值”“重新载入”“保存设置”。
 - 主题目前内置 `深海蓝 / 石墨灰 / 琥珀终端` 三套风格。
 - 快捷键方案目前内置 `标准方案` 和 `字母增强`，后者会在标准方案基础上追加一组 `Ctrl+Shift+...` 快捷键。
-- 预览页支持先进入下层标签，再切换 `config.toml / 配置 Diff / profiles / 配置档 Diff / 仅看变更`。
+- 预览页支持先进入下层标签，再切换 `config.toml / 配置 Diff / profiles / 配置Profile Diff / 仅看变更`。
 - 键盘导航支持“顶部菜单 -> 列表 -> 编辑区”的进入路径，列表页和编辑页都可 `Esc` 回顶部菜单，编辑页也可 `Shift+Tab` 回顶部菜单。
 - 列表支持实时搜索过滤，可通过快捷键快速聚焦搜索框、`Esc` 清空搜索，并高亮命中词。
 - 预览页提供完整文件、diff，以及“仅看变更”的紧凑视图。

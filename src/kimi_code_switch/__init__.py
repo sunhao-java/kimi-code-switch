@@ -4,9 +4,8 @@ from __future__ import annotations
 
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
+from typing import Optional
 import sys
-import tomllib
-
 
 PACKAGE_NAME = "kimi-code-switch"
 
@@ -21,7 +20,7 @@ def _bootstrap_vendor_path() -> None:
 _bootstrap_vendor_path()
 
 
-def _homebrew_cellar_version_from_path(path: Path) -> str | None:
+def _homebrew_cellar_version_from_path(path: Path) -> Optional[str]:
     parts = path.parts
     for index, part in enumerate(parts):
         if part != "Cellar":
@@ -35,23 +34,29 @@ def _homebrew_cellar_version_from_path(path: Path) -> str | None:
     return None
 
 
-def _version_from_homebrew() -> str | None:
-    executable = Path(sys.argv[0]).expanduser()
-    try:
-        resolved = executable.resolve()
-    except OSError:
-        resolved = executable
-    return _homebrew_cellar_version_from_path(resolved)
+def _version_from_homebrew() -> Optional[str]:
+    for raw_path in (sys.argv[0], sys.executable):
+        executable = Path(raw_path).expanduser()
+        try:
+            resolved = executable.resolve()
+        except OSError:
+            resolved = executable
+        detected = _homebrew_cellar_version_from_path(resolved)
+        if detected:
+            return detected
+    return None
 
 
-def _version_from_metadata() -> str | None:
+def _version_from_metadata() -> Optional[str]:
     try:
         return version(PACKAGE_NAME)
     except PackageNotFoundError:
         return None
 
 
-def _version_from_pyproject() -> str | None:
+def _version_from_pyproject() -> Optional[str]:
+    from ._toml import tomllib
+
     pyproject = Path(__file__).resolve().parents[2] / "pyproject.toml"
     if not pyproject.exists():
         return None

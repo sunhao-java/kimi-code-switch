@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import difflib
 from pathlib import Path
+from typing import Optional, Union
 
 from rich.syntax import Syntax
 from rich.text import Text
@@ -65,12 +66,13 @@ THEME_LABELS = {value: label for label, value in THEME_OPTIONS}
 SHORTCUT_SCHEMES: dict[str, dict[str, object]] = {
     "default": {
         "label": "标准方案（默认）",
-        "description": "保留当前 `Ctrl+数字`、`F6`、`F7~F9` 方案。",
+        "description": "保留当前 `Ctrl+数字`、`F6`、`F7~F10` 方案。",
         "aliases": {},
         "lines": [
             "页签：Ctrl+1..6",
             "预览：F6",
             "摘要卡：F7 / F8 / F9",
+            "关于：F10",
             "搜索：/ 或 Ctrl+F",
         ],
     },
@@ -107,7 +109,12 @@ ABOUT_LINES = (
 
 
 class SummaryCard(Static, can_focus=True):
-    BINDINGS = [Binding("enter", "select_card", "进入", show=False)]
+    BINDINGS = [
+        Binding("enter", "select_card", "进入", show=False),
+        Binding("left", "focus_previous_summary", "上一个", show=False),
+        Binding("right", "focus_next_summary", "下一个", show=False),
+        Binding("down", "focus_main_menu", "返回页签", show=False),
+    ]
 
     class Selected(Message):
         def __init__(self, card: "SummaryCard") -> None:
@@ -121,8 +128,55 @@ class SummaryCard(Static, can_focus=True):
     def action_select_card(self) -> None:
         self.post_message(self.Selected(self))
 
+    def action_focus_previous_summary(self) -> None:
+        app = self.app
+        if isinstance(app, ConfigPanelApp):
+            app.focus_previous_summary_item()
+
+    def action_focus_next_summary(self) -> None:
+        app = self.app
+        if isinstance(app, ConfigPanelApp):
+            app.focus_next_summary_item()
+
+    def action_focus_main_menu(self) -> None:
+        app = self.app
+        if isinstance(app, ConfigPanelApp):
+            app.focus_main_menu_from_summary()
+
+    def key_left(self, event) -> None:
+        event.stop()
+        self.action_focus_previous_summary()
+
+    def key_right(self, event) -> None:
+        event.stop()
+        self.action_focus_next_summary()
+
+    def key_down(self, event) -> None:
+        event.stop()
+        self.action_focus_main_menu()
+
     def on_click(self) -> None:
         self.post_message(self.Selected(self))
+
+
+class AboutButton(Button):
+    def key_left(self, event) -> None:
+        event.stop()
+        app = self.app
+        if isinstance(app, ConfigPanelApp):
+            app.focus_previous_summary_item()
+
+    def key_right(self, event) -> None:
+        event.stop()
+        app = self.app
+        if isinstance(app, ConfigPanelApp):
+            app.focus_next_summary_item()
+
+    def key_down(self, event) -> None:
+        event.stop()
+        app = self.app
+        if isinstance(app, ConfigPanelApp):
+            app.focus_main_menu_from_summary()
 
 
 class AboutDialog(ModalScreen[None]):
@@ -231,14 +285,18 @@ def _theme_override_css(
         color: {footer_text};
     }}
 
-    Screen.-theme-{theme_name} .summary-card {{
+    Screen.-theme-{theme_name} .summary-card,
+    Screen.-theme-{theme_name} #about-open {{
         background: {card_bg};
         border: round {card_border};
         color: {text};
     }}
 
-    Screen.-theme-{theme_name} .summary-card:focus {{
+    Screen.-theme-{theme_name} .summary-card:focus,
+    Screen.-theme-{theme_name} #about-open:focus {{
         background: {card_focus_bg};
+        border: round {tab_focus_border};
+        color: {tab_active_text};
     }}
 
     Screen.-theme-{theme_name} #tabs,
@@ -375,6 +433,7 @@ class ConfigPanelApp(App[None]):
         "profiles": "F7",
         "models": "F8",
         "providers": "F9",
+        "about": "F10",
     }
 
     CSS = """
@@ -432,19 +491,20 @@ class ConfigPanelApp(App[None]):
     }
 
     #about-open {
-        width: 14;
-        min-width: 14;
-        height: 3;
+        width: 13;
+        min-width: 13;
+        height: 6;
         margin-left: 1;
-        margin-top: 1;
-        background: #112339;
-        color: #e5edf7;
-        border: round #3b82f6;
+        padding: 1 2;
+        background: #0c1727;
+        color: #d8e5f2;
+        border: round #1f3550;
     }
 
     #about-open:focus {
-        background: #1d4ed8;
-        color: #ffffff;
+        background: #16314d;
+        border: round #f8fafc;
+        color: #f8fbff;
         text-style: bold;
     }
 
@@ -779,15 +839,18 @@ class ConfigPanelApp(App[None]):
 
     BINDINGS = [
         ("q", "quit", "退出"),
-        Binding("ctrl+1", "switch_to_profiles", "配置档页", show=False),
+        Binding("ctrl+1", "switch_to_profiles", "配置Profile页", show=False),
         Binding("ctrl+2", "switch_to_providers", "提供方页", show=False),
         Binding("ctrl+3", "switch_to_models", "模型页", show=False),
         Binding("ctrl+4", "switch_to_preview_tab", "预览页", show=False),
         Binding("ctrl+5", "switch_to_settings", "设置页", show=False),
         Binding("ctrl+6", "switch_to_help", "帮助页", show=False),
-        Binding("f7", "focus_profile_summary", "当前配置档", show=False),
+        Binding("f7", "focus_profile_summary", "当前配置Profile", show=False),
         Binding("f8", "focus_model_summary", "当前生效模型", show=False),
-        Binding("f9", "focus_inventory_summary", "资源概览", show=False),
+        Binding("f9", "focus_inventory_summary", "提供方", show=False),
+        Binding("f10", "show_about", "关于", show=True),
+        Binding("left", "previous_summary_item", "上一个摘要", show=False),
+        Binding("right", "next_summary_item", "下一个摘要", show=False),
         Binding("tab", "next_menu", "下一项", show=False, priority=True),
         Binding("shift+tab", "previous_menu", "上一项", show=False, priority=True),
         ("/", "focus_filter", "搜索"),
@@ -805,7 +868,7 @@ class ConfigPanelApp(App[None]):
     def __init__(
         self,
         state: AppState,
-        panel_settings: PanelSettings | None = None,
+        panel_settings: Optional[PanelSettings] = None,
     ) -> None:
         super().__init__()
         self.state = state
@@ -814,11 +877,11 @@ class ConfigPanelApp(App[None]):
             profiles_path=state.profiles_path,
         )
         self.title = "Kimi 配置面板"
-        self.sub_title = "提供方、模型、配置档与面板设置"
+        self.sub_title = "提供方、模型、配置Profile与面板设置"
 
-        self.selected_profile_name: str | None = None
-        self.selected_provider_name: str | None = None
-        self.selected_model_name: str | None = None
+        self.selected_profile_name: Optional[str] = None
+        self.selected_provider_name: Optional[str] = None
+        self.selected_model_name: Optional[str] = None
         self.selected_settings_key = "config_path"
         self.last_editor_tab = "profiles"
         self.preview_payload: dict[str, str] = {}
@@ -830,23 +893,23 @@ class ConfigPanelApp(App[None]):
         yield Header(show_clock=True)
         with Horizontal(id="summary-bar"):
             yield SummaryCard("profiles", id="summary-profile", classes="summary-card -hot")
-            yield SummaryCard("models", id="summary-model", classes="summary-card -accent")
             yield SummaryCard("providers", id="summary-inventory", classes="summary-card -warm")
-            yield Button("关于", id="about-open")
+            yield SummaryCard("models", id="summary-model", classes="summary-card -accent")
+            yield AboutButton(f"关于 {self.SUMMARY_SHORTCUTS['about']}", id="about-open")
         with TabbedContent(initial="profiles", id="tabs"):
-            with TabPane("配置档 Ctrl+1", id="profiles"):
+            with TabPane("配置Profile Ctrl+1", id="profiles"):
                 with Horizontal(classes="workspace"):
                     with Vertical(classes="list-panel"):
-                        yield Static("配置档列表", classes="panel-title")
+                        yield Static("配置Profile列表", classes="panel-title")
                         yield Input(
-                            placeholder="搜索配置档名称 / 标签",
+                            placeholder="搜索配置Profile名称 / 标签",
                             id="profiles-filter",
                             classes="filter-input",
                         )
                         yield DataTable(id="profiles-table")
                     with VerticalScroll(classes="form-panel"):
-                        yield Static("配置档编辑器", classes="panel-title")
-                        yield Label("配置档名称", classes="field-label")
+                        yield Static("配置Profile编辑器", classes="panel-title")
+                        yield Label("配置Profile名称", classes="field-label")
                         yield Input(id="profile-name", classes="wide-input")
                         yield Label("显示名称", classes="field-label")
                         yield Input(id="profile-label", classes="wide-input")
@@ -911,10 +974,10 @@ class ConfigPanelApp(App[None]):
                         yield DataTable(id="models-table")
                     with VerticalScroll(classes="form-panel"):
                         yield Static("模型编辑器", classes="panel-title")
-                        yield Label("模型名称", classes="field-label")
-                        yield Input(id="model-name", classes="wide-input")
                         yield Label("所属提供方", classes="field-label")
                         yield Select([], id="model-provider", allow_blank=True)
+                        yield Label("模型名称（不含提供方前缀）", classes="field-label")
+                        yield Input(id="model-name", classes="wide-input")
                         yield Label("远端模型 ID", classes="field-label")
                         yield Input(id="model-remote-name", classes="wide-input")
                         yield Label("最大上下文", classes="field-label")
@@ -944,7 +1007,7 @@ class ConfigPanelApp(App[None]):
                         with TabPane("profiles", id="preview-profiles"):
                             with VerticalScroll(classes="preview-panel"):
                                 yield Static("", id="preview-profiles-body")
-                        with TabPane("配置档 Diff", id="preview-profiles-diff"):
+                        with TabPane("配置Profile Diff", id="preview-profiles-diff"):
                             with VerticalScroll(classes="preview-panel"):
                                 yield Static("", id="preview-profiles-diff-body")
                         with TabPane("仅看变更", id="preview-compact"):
@@ -961,10 +1024,10 @@ class ConfigPanelApp(App[None]):
                         yield Label("Kimi 主配置文件", classes="field-label")
                         yield Input(id="settings-config-path", classes="wide-input")
                         yield Checkbox(
-                            "配置档路径跟随主配置目录",
+                            "配置Profile路径跟随主配置目录",
                             id="settings-follow-profiles",
                         )
-                        yield Label("配置档 sidecar 文件", classes="field-label")
+                        yield Label("配置Profile sidecar 文件", classes="field-label")
                         yield Input(id="settings-profiles-path", classes="wide-input")
                         yield Label("TUI 主题", classes="field-label")
                         yield Select(THEME_OPTIONS, id="settings-theme", allow_blank=False)
@@ -1033,13 +1096,13 @@ class ConfigPanelApp(App[None]):
 
     def action_clone_profile(self) -> None:
         if self._active_tab() != "profiles":
-            self._set_status("克隆操作只适用于配置档页。", error=True)
+            self._set_status("克隆操作只适用于配置Profile页。", error=True)
             return
         self._clone_profile_draft()
 
     def action_activate_profile(self) -> None:
         if self._active_tab() != "profiles":
-            self._set_status("启用操作只适用于配置档页。", error=True)
+            self._set_status("启用操作只适用于配置Profile页。", error=True)
             return
         self._activate_selected_profile()
 
@@ -1075,6 +1138,26 @@ class ConfigPanelApp(App[None]):
 
     def action_focus_inventory_summary(self) -> None:
         self._focus_summary_card("providers")
+
+    def action_previous_summary_item(self) -> None:
+        if self._is_summary_widget(self.focused):
+            self.focus_previous_summary_item()
+
+    def action_next_summary_item(self) -> None:
+        if self._is_summary_widget(self.focused):
+            self.focus_next_summary_item()
+
+    def action_focus_summary_from_menu(self) -> None:
+        if self.focused is not self._main_tabs_widget():
+            self.action_cursor_up()
+            return
+        target_tab = self._active_tab()
+        if target_tab == "models":
+            self._focus_summary_card("models")
+        elif target_tab == "providers":
+            self._focus_summary_card("providers")
+        else:
+            self._focus_summary_card("profiles")
 
     def action_activate_context(self) -> None:
         focused = self.focused
@@ -1250,6 +1333,26 @@ class ConfigPanelApp(App[None]):
             self._refresh_settings_table()
 
     def on_key(self, event) -> None:
+        if getattr(event, "key", "") == "down" and self._is_summary_widget(self.focused):
+            event.stop()
+            self.focus_main_menu_from_summary()
+            return
+
+        if getattr(event, "key", "") in {"left", "right"} and self._is_summary_widget(
+            self.focused
+        ):
+            event.stop()
+            if getattr(event, "key", "") == "left":
+                self.focus_previous_summary_item()
+            else:
+                self.focus_next_summary_item()
+            return
+
+        if getattr(event, "key", "") == "up" and self.focused is self._main_tabs_widget():
+            event.stop()
+            self.action_focus_summary_from_menu()
+            return
+
         scheme = SHORTCUT_SCHEMES.get(
             self.panel_settings.shortcut_scheme,
             SHORTCUT_SCHEMES[DEFAULT_SHORTCUT_SCHEME],
@@ -1289,7 +1392,7 @@ class ConfigPanelApp(App[None]):
             self.selected_model_name or str(self.state.main_config.get("default_model", ""))
         )
 
-    def _refresh_profiles_table(self, select_name: str | None = None) -> None:
+    def _refresh_profiles_table(self, select_name: Optional[str] = None) -> None:
         table = self.query_one("#profiles-table", DataTable)
         table.clear(columns=False)
         query = self.query_one("#profiles-filter", Input).value.strip().lower()
@@ -1307,7 +1410,7 @@ class ConfigPanelApp(App[None]):
             )
         self._move_cursor_to_name(table, names, select_name or self.state.active_profile)
 
-    def _refresh_providers_table(self, select_name: str | None = None) -> None:
+    def _refresh_providers_table(self, select_name: Optional[str] = None) -> None:
         table = self.query_one("#providers-table", DataTable)
         table.clear(columns=False)
         query = self.query_one("#providers-filter", Input).value.strip().lower()
@@ -1329,7 +1432,7 @@ class ConfigPanelApp(App[None]):
             )
         self._move_cursor_to_name(table, names, select_name)
 
-    def _refresh_models_table(self, select_name: str | None = None) -> None:
+    def _refresh_models_table(self, select_name: Optional[str] = None) -> None:
         table = self.query_one("#models-table", DataTable)
         table.clear(columns=False)
         query = self.query_one("#models-filter", Input).value.strip().lower()
@@ -1369,7 +1472,7 @@ class ConfigPanelApp(App[None]):
             ),
             (
                 "profiles_path",
-                "配置档 sidecar",
+                "配置Profile sidecar",
                 "跟随主配置目录"
                 if current.follow_config_profiles
                 else str(current.resolved_profiles_path()),
@@ -1513,9 +1616,9 @@ class ConfigPanelApp(App[None]):
                 [
                     "默认值",
                     f"  主配置：{default.resolved_config_path()}",
-                    f"  配置档：{default.resolved_profiles_path()}",
+                    f"  配置Profile：{default.resolved_profiles_path()}",
                     f"  主题：{THEME_LABELS.get(default.theme, default.theme)}",
-                    "  快捷键：标准方案（Ctrl+1..6 / F6 / F7~F9）",
+                    "  快捷键：标准方案（Ctrl+1..6 / F6 / F7~F10）",
                 ]
             )
         )
@@ -1573,7 +1676,7 @@ class ConfigPanelApp(App[None]):
         if dependency_message:
             self._set_status(dependency_message, error=True)
             return
-        self._set_status("已创建新的配置档草稿。")
+        self._set_status("已创建新的配置Profile草稿。")
 
     def _clone_profile_draft(self) -> None:
         dependency_message = self._profile_dependency_message()
@@ -1582,13 +1685,13 @@ class ConfigPanelApp(App[None]):
             return
         source = self._profile_from_form()
         source_name = self.query_one("#profile-name", Input).value.strip() or "profile"
-        source.label = self.query_one("#profile-label", Input).value.strip() or "配置档"
+        source.label = self.query_one("#profile-label", Input).value.strip() or "配置Profile"
         source.name = self._unique_profile_name(source_name)
         source.label = f"{source.label} 副本"
         self.selected_profile_name = None
         self._set_profile_form(source, editable_name=True)
         self.query_one("#profile-name", Input).focus()
-        self._set_status("已克隆当前配置档，请保存为新配置。")
+        self._set_status("已克隆当前配置Profile，请保存为新配置。")
 
     def _new_provider_draft(self) -> None:
         self.selected_provider_name = None
@@ -1614,7 +1717,7 @@ class ConfigPanelApp(App[None]):
             capabilities="",
             lock_name=False,
         )
-        self.query_one("#model-name", Input).focus()
+        self.query_one("#model-provider", Select).focus()
         dependency_message = self._model_dependency_message()
         if dependency_message:
             self._set_status(dependency_message, error=True)
@@ -1628,25 +1731,28 @@ class ConfigPanelApp(App[None]):
             return
         data = self._profile_payload_from_form()
         if not data["name"]:
-            self._set_status("配置档名称不能为空。", error=True)
+            self._set_status("配置Profile名称不能为空。", error=True)
             return
         if not data["default_model"]:
             self._set_status("请先选择默认模型。", error=True)
             return
 
+        candidate = clone_state(self.state)
         try:
-            upsert_profile(self.state, **data)
-            if self.state.active_profile == data["name"]:
-                apply_profile(self.state, data["name"])
+            upsert_profile(candidate, **data)
+            if candidate.active_profile == data["name"]:
+                apply_profile(candidate, data["name"])
         except ValueError as exc:
             self._set_status(str(exc), error=True)
             return
-        save_state(self.state)
+        if not self._save_state_or_report(candidate):
+            return
+        self.state = candidate
         self.selected_profile_name = data["name"]
         self._refresh_profiles_table(data["name"])
         self._load_profile_form(data["name"])
         self._refresh_summary()
-        self._set_status(f"配置档已保存：{data['name']}")
+        self._set_status(f"配置Profile已保存：{data['name']}")
 
     def _save_provider_form(self) -> None:
         name = self.query_one("#provider-name", Input).value.strip()
@@ -1661,14 +1767,17 @@ class ConfigPanelApp(App[None]):
             self._set_status("当前不支持重命名提供方，请新建一个。", error=True)
             return
 
+        candidate = clone_state(self.state)
         upsert_provider(
-            self.state,
+            candidate,
             name=name,
             provider_type=provider_type,
             base_url=base_url,
             api_key=api_key,
         )
-        save_state(self.state)
+        if not self._save_state_or_report(candidate):
+            return
+        self.state = candidate
         self.selected_provider_name = name
         self.provider_name_locked = True
         self._refresh_select_options()
@@ -1683,8 +1792,8 @@ class ConfigPanelApp(App[None]):
         if dependency_message:
             self._set_status(dependency_message, error=True)
             return
-        name = self.query_one("#model-name", Input).value.strip()
         provider = self._select_value("#model-provider")
+        name = self._model_key_from_form(provider=provider)
         remote_model = self.query_one("#model-remote-name", Input).value.strip()
         max_context_size_raw = self.query_one("#model-context-size", Input).value.strip()
         capabilities_raw = self.query_one("#model-capabilities", Input).value.strip()
@@ -1706,20 +1815,23 @@ class ConfigPanelApp(App[None]):
             return
 
         capabilities = [item.strip() for item in capabilities_raw.split(",") if item.strip()]
+        candidate = clone_state(self.state)
         try:
             upsert_model(
-                self.state,
+                candidate,
                 name=name,
                 provider=provider,
                 model=remote_model,
                 max_context_size=max_context_size,
                 capabilities=capabilities,
             )
-            self._sync_active_profile_for_model_change(self.state, name)
+            self._sync_active_profile_for_model_change(candidate, name)
         except ValueError as exc:
             self._set_status(str(exc), error=True)
             return
-        save_state(self.state)
+        if not self._save_state_or_report(candidate):
+            return
+        self.state = candidate
         self.selected_model_name = name
         self.model_name_locked = True
         self._refresh_select_options()
@@ -1731,31 +1843,37 @@ class ConfigPanelApp(App[None]):
 
     def _delete_selected_profile(self) -> None:
         if not self.selected_profile_name:
-            self._set_status("请先选择要删除的配置档。", error=True)
+            self._set_status("请先选择要删除的配置Profile。", error=True)
             return
+        candidate = clone_state(self.state)
         try:
-            delete_profile(self.state, self.selected_profile_name)
+            delete_profile(candidate, self.selected_profile_name)
         except ValueError as exc:
             self._set_status(str(exc), error=True)
             return
-        save_state(self.state)
+        if not self._save_state_or_report(candidate):
+            return
+        self.state = candidate
         self.selected_profile_name = None
         self._refresh_profiles_table(self.state.active_profile)
         if self.state.active_profile in self.state.profiles:
             self._load_profile_form(self.state.active_profile)
         self._refresh_summary()
-        self._set_status("配置档已删除。")
+        self._set_status("配置Profile已删除。")
 
     def _delete_selected_provider(self) -> None:
         if not self.selected_provider_name:
             self._set_status("请先选择要删除的提供方。", error=True)
             return
+        candidate = clone_state(self.state)
         try:
-            delete_provider(self.state, self.selected_provider_name)
+            delete_provider(candidate, self.selected_provider_name)
         except ValueError as exc:
             self._set_status(str(exc), error=True)
             return
-        save_state(self.state)
+        if not self._save_state_or_report(candidate):
+            return
+        self.state = candidate
         self.selected_provider_name = None
         self.provider_name_locked = False
         self._refresh_select_options()
@@ -1772,12 +1890,15 @@ class ConfigPanelApp(App[None]):
         if not self.selected_model_name:
             self._set_status("请先选择要删除的模型。", error=True)
             return
+        candidate = clone_state(self.state)
         try:
-            delete_model(self.state, self.selected_model_name)
+            delete_model(candidate, self.selected_model_name)
         except ValueError as exc:
             self._set_status(str(exc), error=True)
             return
-        save_state(self.state)
+        if not self._save_state_or_report(candidate):
+            return
+        self.state = candidate
         self.selected_model_name = None
         self.model_name_locked = False
         self._refresh_select_options()
@@ -1797,21 +1918,24 @@ class ConfigPanelApp(App[None]):
             return
         name = self.query_one("#profile-name", Input).value.strip() or self.selected_profile_name
         if not name:
-            self._set_status("请先选择或保存配置档。", error=True)
+            self._set_status("请先选择或保存配置Profile。", error=True)
             return
         if name not in self.state.profiles:
-            self._set_status("请先保存配置档，再执行启用。", error=True)
+            self._set_status("请先保存配置Profile，再执行启用。", error=True)
             return
+        candidate = clone_state(self.state)
         try:
-            apply_profile(self.state, name)
+            apply_profile(candidate, name)
         except ValueError as exc:
             self._set_status(str(exc), error=True)
             return
-        save_state(self.state)
+        if not self._save_state_or_report(candidate):
+            return
+        self.state = candidate
         self.selected_profile_name = name
         self._refresh_profiles_table(name)
         self._refresh_summary()
-        self._set_status(f"当前生效配置档：{name}")
+        self._set_status(f"当前生效配置Profile：{name}")
 
     def _set_profile_form(self, profile: Profile, *, editable_name: bool) -> None:
         self.query_one("#profile-name", Input).value = profile.name
@@ -1857,7 +1981,7 @@ class ConfigPanelApp(App[None]):
         lock_name: bool,
     ) -> None:
         name_input = self.query_one("#model-name", Input)
-        name_input.value = name
+        name_input.value = self._model_name_suffix(name, provider)
         name_input.disabled = lock_name
         self._set_select_value("#model-provider", provider)
         self.query_one("#model-remote-name", Input).value = remote_model
@@ -2021,7 +2145,7 @@ class ConfigPanelApp(App[None]):
         return Path(raw).expanduser()
 
     def _move_cursor_to_name(
-        self, table: DataTable, names: list[str], target_name: str | None
+        self, table: DataTable, names: list[str], target_name: Optional[str]
     ) -> None:
         if not names:
             return
@@ -2042,6 +2166,25 @@ class ConfigPanelApp(App[None]):
     def _first_provider_name(self) -> str:
         return next(iter(self.state.main_config["providers"]), "")
 
+    def _model_key_from_form(self, *, provider: str) -> str:
+        if self.model_name_locked and self.selected_model_name:
+            return self.selected_model_name
+        suffix = self.query_one("#model-name", Input).value.strip()
+        if provider and suffix.startswith(f"{provider}/"):
+            suffix = suffix[len(provider) + 1 :]
+        elif "/" in suffix:
+            suffix = suffix.split("/", 1)[1]
+        if not provider or not suffix:
+            return suffix
+        return f"{provider}/{suffix}"
+
+    def _model_name_suffix(self, model_name: str, provider: str) -> str:
+        if provider and model_name.startswith(f"{provider}/"):
+            return model_name[len(provider) + 1 :]
+        if "/" in model_name:
+            return model_name.split("/", 1)[1]
+        return model_name
+
     def _active_tab(self) -> str:
         return self.query_one("#tabs", TabbedContent).active
 
@@ -2051,11 +2194,15 @@ class ConfigPanelApp(App[None]):
     def _preview_tabs_widget(self) -> ContentTabs:
         return self.query_one("#preview-tabs > ContentTabs", ContentTabs)
 
-    def _preview_tabs_widget_optional(self) -> ContentTabs | None:
+    def _preview_tabs_widget_optional(self) -> Optional[ContentTabs]:
         return self.query_one_optional("#preview-tabs > ContentTabs", ContentTabs)
 
     def _focus_main_menu(self) -> None:
         self.set_focus(self._main_tabs_widget())
+
+    def focus_main_menu_from_summary(self) -> None:
+        self._focus_main_menu()
+        self._set_status("已从顶部摘要返回页签菜单。")
 
     def _switch_main_tab(self, tab_id: str) -> None:
         self.query_one("#tabs", TabbedContent).active = tab_id
@@ -2073,6 +2220,31 @@ class ConfigPanelApp(App[None]):
         widget = self.query_one(selector, SummaryCard)
         self.set_focus(widget)
         self._set_status(f"已聚焦{self._tab_label(tab_id)}摘要卡，按回车进入列表。")
+
+    def focus_previous_summary_item(self) -> None:
+        self._focus_relative_summary_item(-1)
+
+    def focus_next_summary_item(self) -> None:
+        self._focus_relative_summary_item(1)
+
+    def _focus_relative_summary_item(self, offset: int) -> None:
+        items = self._summary_widgets()
+        focused = self.focused
+        if focused not in items:
+            return
+        next_index = (items.index(focused) + offset) % len(items)
+        self.set_focus(items[next_index])
+
+    def _summary_widgets(self) -> list[Widget]:
+        return [
+            self.query_one("#summary-profile", SummaryCard),
+            self.query_one("#summary-inventory", SummaryCard),
+            self.query_one("#summary-model", SummaryCard),
+            self.query_one("#about-open", Button),
+        ]
+
+    def _is_summary_widget(self, widget: object) -> bool:
+        return widget in self._summary_widgets()
 
     def _activate_summary_card(self, card: SummaryCard) -> None:
         self.query_one("#tabs", TabbedContent).active = card.target_tab
@@ -2106,7 +2278,7 @@ class ConfigPanelApp(App[None]):
         self.set_focus(panel)
         self._set_status("已进入预览内容区。")
 
-    def _current_preview_panel(self) -> VerticalScroll | None:
+    def _current_preview_panel(self) -> Optional[VerticalScroll]:
         preview_active = self.query_one("#preview-tabs", TabbedContent).active
         selector = {
             "preview-config": "#preview-config .preview-panel",
@@ -2119,7 +2291,7 @@ class ConfigPanelApp(App[None]):
             return None
         return self.query_one(selector, VerticalScroll)
 
-    def _current_list_widget(self) -> DataTable | None:
+    def _current_list_widget(self) -> Optional[DataTable]:
         selector = {
             "profiles": "#profiles-table",
             "providers": "#providers-table",
@@ -2130,7 +2302,7 @@ class ConfigPanelApp(App[None]):
             return None
         return self.query_one(selector, DataTable)
 
-    def _editor_entry_widget(self, tab_id: str) -> Widget | None:
+    def _editor_entry_widget(self, tab_id: str) -> Optional[Widget]:
         if tab_id == "settings":
             return self._settings_entry_widget()
         candidates = {
@@ -2148,8 +2320,8 @@ class ConfigPanelApp(App[None]):
                 "#provider-api-key",
             ],
             "models": [
-                "#model-name",
                 "#model-provider",
+                "#model-name",
                 "#model-remote-name",
                 "#model-context-size",
                 "#model-capabilities",
@@ -2161,7 +2333,7 @@ class ConfigPanelApp(App[None]):
                 return widget
         return None
 
-    def _settings_entry_widget(self) -> Widget | None:
+    def _settings_entry_widget(self) -> Optional[Widget]:
         selected_key = self.selected_settings_key or "config_path"
         candidates = {
             "config_path": ["#settings-config-path"],
@@ -2181,17 +2353,25 @@ class ConfigPanelApp(App[None]):
         widget.update(message)
         widget.styles.color = "red" if error else "green"
 
-    def _profile_dependency_message(self) -> str | None:
+    def _save_state_or_report(self, state: AppState) -> bool:
+        try:
+            save_state(state)
+        except (OSError, TypeError, ValueError) as exc:
+            self._set_status(f"保存失败：{exc}", error=True)
+            return False
+        return True
+
+    def _profile_dependency_message(self) -> Optional[str]:
         if self.state.main_config["models"]:
             return None
-        return "当前还没有模型，请先在“模型”页创建模型后再保存、预览或启用配置档。"
+        return "当前还没有模型，请先在“模型”页创建模型后再保存、预览或启用配置Profile。"
 
-    def _model_dependency_message(self) -> str | None:
+    def _model_dependency_message(self) -> Optional[str]:
         if self.state.main_config["providers"]:
             return None
         return "当前还没有提供方，请先在“提供方”页创建提供方后再保存或预览模型。"
 
-    def _dependency_message_for_tab(self, tab_id: str) -> str | None:
+    def _dependency_message_for_tab(self, tab_id: str) -> Optional[str]:
         if tab_id == "profiles":
             return self._profile_dependency_message()
         if tab_id == "models":
@@ -2228,23 +2408,25 @@ class ConfigPanelApp(App[None]):
         return "\n".join(
             [
                 f"主配置文件：{self.state.config_path}",
-                f"配置档文件：{self.state.profiles_path}",
+                f"配置Profile文件：{self.state.profiles_path}",
                 f"面板设置文件：{self.panel_settings.settings_path}",
                 f"TUI 主题：{THEME_LABELS.get(self.panel_settings.theme, self.panel_settings.theme)}",
                 f"快捷键方案：{shortcut_info['label']}",
                 "",
                 "快捷键：",
                 "  q         退出",
-                "  Ctrl+1~6  切换配置档 / 提供方 / 模型 / 预览 / 设置 / 帮助",
+                "  Ctrl+1~6  切换配置Profile / 提供方 / 模型 / 预览 / 设置 / 帮助",
                 "  F7~F9      聚焦上方摘要卡，回车进入对应列表",
+                "  F10        打开关于信息",
+                "  ↑         顶部页签聚焦时，进入对应的上方摘要卡",
                 "  Tab       顶部菜单切换；预览下层标签内切换预览页签；其他场景切到下一项",
                 "  Shift+Tab 列表/编辑区回顶部菜单，其他场景回上一项",
                 "  Enter     菜单进入列表；预览页进入下层标签；列表进入右侧编辑区",
                 "  Ctrl+N    当前页新建草稿",
                 "  Ctrl+S    保存当前表单",
                 "  Ctrl+D    删除当前选中项",
-                "  Ctrl+C    克隆当前配置档",
-                "  Ctrl+A    启用当前配置档",
+                "  Ctrl+C    克隆当前配置Profile",
+                "  Ctrl+A    启用当前配置Profile",
                 "  F6        查看预览与 diff",
                 "  /, Ctrl+F 聚焦当前列表搜索框",
                 "  Esc       列表/编辑/预览区回顶部菜单；搜索框有内容时先清空",
@@ -2254,9 +2436,9 @@ class ConfigPanelApp(App[None]):
                 *[f"  {line}" for line in shortcut_info["lines"]],
                 "",
                 "说明：",
-                "  配置档用于维护多套默认组合，并将当前生效项写回 config.toml。",
+                "  配置Profile用于维护多套默认组合，并将当前生效项写回 config.toml。",
                 "  提供方和模型一旦创建后名称固定，如需改名请新建。",
-                "  模型与提供方选择都通过下拉完成，无需手输。",
+                "  模型的提供方前缀通过下拉选择，名称输入框只填写后缀。",
                 "  列表支持实时搜索过滤，预览页可先看生成结果再保存。",
                 "  设置页可调整配置路径、主题风格和快捷键方案，并提供默认值参考。",
             ]
@@ -2288,7 +2470,7 @@ class ConfigPanelApp(App[None]):
         active_provider = str(active_model_config.get("provider", "")) or "未设置"
 
         self.query_one("#summary-profile", SummaryCard).update(
-            f"当前配置档 ({self.SUMMARY_SHORTCUTS['profiles']})\n"
+            f"当前配置Profile ({self.SUMMARY_SHORTCUTS['profiles']})\n"
             f"{active_profile}\n"
             f"回车进入列表 · 共 {len(self.state.profiles)} 个"
         )
@@ -2298,7 +2480,7 @@ class ConfigPanelApp(App[None]):
             f"提供方：{active_provider} · 回车进入列表"
         )
         self.query_one("#summary-inventory", SummaryCard).update(
-            f"资源概览 ({self.SUMMARY_SHORTCUTS['providers']})\n"
+            f"提供方 ({self.SUMMARY_SHORTCUTS['providers']})\n"
             f"{len(self.state.main_config['providers'])} 个提供方\n"
             f"{len(self.state.main_config['models'])} 个模型 · 回车进入列表"
         )
@@ -2373,7 +2555,7 @@ class ConfigPanelApp(App[None]):
             payload = self._profile_payload_from_form()
             name = str(payload["name"]).strip()
             if not name:
-                raise ValueError("预览前必须填写配置档名称。")
+                raise ValueError("预览前必须填写配置Profile名称。")
             if not payload["default_model"]:
                 raise ValueError("预览前请先选择默认模型。")
             upsert_profile(draft_state, **payload)
@@ -2400,8 +2582,8 @@ class ConfigPanelApp(App[None]):
             dependency_message = self._model_dependency_message()
             if dependency_message:
                 raise ValueError(dependency_message)
-            name = self.query_one("#model-name", Input).value.strip()
             provider = self._select_value("#model-provider")
+            name = self._model_key_from_form(provider=provider)
             if not name:
                 raise ValueError("预览前必须填写模型名称。")
             if self.model_name_locked and self.selected_model_name != name:
@@ -2530,7 +2712,7 @@ class ConfigPanelApp(App[None]):
             lines.extend(f"    {item.strip()}" for item in items)
         return lines or ["  无变更"]
 
-    def _highlight_match(self, value: str, query: str) -> str | Text:
+    def _highlight_match(self, value: str, query: str) -> Union[str, Text]:
         if not value or not query:
             return value
         lowered_value = value.lower()
@@ -2561,7 +2743,7 @@ class ConfigPanelApp(App[None]):
         widget.cursor_position = len(widget.value)
         self._set_status(f"已聚焦{self._tab_label(tab_id)}搜索框。")
 
-    def _current_filter_widget(self) -> Input | None:
+    def _current_filter_widget(self) -> Optional[Input]:
         focused = self.focused
         if self._is_filter_widget(focused):
             if isinstance(focused, Input):
@@ -2574,7 +2756,7 @@ class ConfigPanelApp(App[None]):
             return None
         return self.query_one(filter_id, Input)
 
-    def _filter_id_for_tab(self, tab_id: str) -> str | None:
+    def _filter_id_for_tab(self, tab_id: str) -> Optional[str]:
         return {
             "profiles": "#profiles-filter",
             "providers": "#providers-filter",
@@ -2656,7 +2838,7 @@ class ConfigPanelApp(App[None]):
 
     def _tab_label(self, tab_id: str) -> str:
         labels = {
-            "profiles": "配置档",
+            "profiles": "配置Profile",
             "providers": "提供方",
             "models": "模型",
             "preview": "预览",

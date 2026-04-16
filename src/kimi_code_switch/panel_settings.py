@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
-import tomllib
+from typing import Any, Optional
 
+from ._toml import tomllib
 from .config_store import PROFILE_FILENAME
 from .toml_utils import dumps_toml
 
@@ -17,11 +17,11 @@ DEFAULT_THEME = "ocean"
 DEFAULT_SHORTCUT_SCHEME = "default"
 
 
-@dataclass(slots=True)
+@dataclass
 class PanelSettings:
     settings_path: Path
     config_path: Path
-    profiles_path: Path | None = None
+    profiles_path: Optional[Path] = None
     follow_config_profiles: bool = True
     theme: str = DEFAULT_THEME
     shortcut_scheme: str = DEFAULT_SHORTCUT_SCHEME
@@ -34,7 +34,7 @@ class PanelSettings:
             return self.resolved_config_path().with_name(PROFILE_FILENAME)
         return self.profiles_path.expanduser()
 
-    def explicit_profiles_path(self) -> Path | None:
+    def explicit_profiles_path(self) -> Optional[Path]:
         if self.follow_config_profiles:
             return None
         return self.resolved_profiles_path()
@@ -56,9 +56,9 @@ class PanelSettings:
 
 def default_panel_settings(
     *,
-    settings_path: Path | None = None,
-    config_path: Path | None = None,
-    profiles_path: Path | None = None,
+    settings_path: Optional[Path] = None,
+    config_path: Optional[Path] = None,
+    profiles_path: Optional[Path] = None,
     theme: str = DEFAULT_THEME,
     shortcut_scheme: str = DEFAULT_SHORTCUT_SCHEME,
 ) -> PanelSettings:
@@ -78,7 +78,7 @@ def default_panel_settings(
     )
 
 
-def load_panel_settings(settings_path: Path | None = None) -> PanelSettings:
+def load_panel_settings(settings_path: Optional[Path] = None) -> PanelSettings:
     base = default_panel_settings(settings_path=settings_path)
     data = _read_toml(base.settings_path)
     if not data:

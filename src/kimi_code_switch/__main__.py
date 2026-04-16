@@ -11,7 +11,7 @@ from .tui import ConfigPanelApp
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="kimi-config-panel",
+        prog="kimi-config-switch",
         description="Terminal UI for kimi-code-cli config.toml",
     )
     parser.add_argument(
@@ -30,7 +30,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--panel-settings",
         type=Path,
         default=DEFAULT_PANEL_SETTINGS_PATH,
-        help="Path to kimi-config-panel settings sidecar",
+        help="Path to kimi-config-switch settings sidecar",
     )
     return parser
 

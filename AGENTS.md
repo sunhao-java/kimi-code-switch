@@ -59,7 +59,7 @@ default_thinking = true
 ### 核心数据结构
 
 - `AppState`: 应用状态，包含主配置、profiles、当前激活 profile
-- `Profile`: 配置档数据类，包含默认模型、thinking/yolo/主题等设置
+- `Profile`: 配置Profile数据类，包含默认模型、thinking/yolo/主题等设置
 - `PROVIDER_KEYS`: provider 字段 (type, base_url, api_key)
 - `MODEL_KEYS`: model 字段 (provider, model, max_context_size, capabilities)
 - `PROFILE_KEYS`: profile 字段 (default_model, theme, default_thinking 等)
@@ -68,7 +68,7 @@ default_thinking = true
 
 ### Python 版本
 
-- **Python 3.11+**（使用 `tomllib` 标准库）
+- **Python 3.9+**（3.11+ 使用 `tomllib` 标准库，3.9/3.10 使用 `tomli` 兼容）
 
 ### 导入顺序
 
@@ -93,8 +93,8 @@ from .config_store import AppState
 ### 类型注解
 
 - 使用 Python 3.9+ 内置泛型：`dict[str, Any]`, `list[str]`
-- dataclass 使用 `slots=True` 优化内存
-- 可选类型使用 `Path | None`（3.10+ 语法）
+- dataclass 不使用 `slots=True`，保持 Python 3.9 兼容
+- 可选类型使用 `Optional[Path]`，避免 3.10+ 才支持的 `Path | None` 语法
 
 ### TUI 开发约定
 
@@ -135,13 +135,13 @@ python3 run_panel.py
 
 ```bash
 python3 -m pip install -e .
-kimi-config-panel
+kimi-config-switch
 ```
 
 ### 命令行参数
 
 ```bash
-kimi-config-panel --config ~/.kimi/config.toml --profiles ~/.kimi/config.profiles.toml
+kimi-config-switch --config ~/.kimi/config.toml --profiles ~/.kimi/config.profiles.toml
 ```
 
 ## 常见修改场景

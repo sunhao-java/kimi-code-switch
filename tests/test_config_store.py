@@ -4,9 +4,13 @@ from pathlib import Path
 import subprocess
 import sys
 from tempfile import TemporaryDirectory
-import tomllib
 import unittest
 import asyncio
+
+try:
+    import tomllib
+except ModuleNotFoundError:
+    import tomli as tomllib
 
 from rich.text import Text
 
@@ -18,7 +22,10 @@ if str(VENDOR_ROOT) not in sys.path:
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
-from kimi_code_switch import __version__, _homebrew_cellar_version_from_path
+from kimi_code_switch import (
+    __version__,
+    _homebrew_cellar_version_from_path,
+)
 from kimi_code_switch.config_store import (
     build_config_document,
     clone_profile,
@@ -40,6 +47,7 @@ from kimi_code_switch.panel_settings import (
     load_panel_settings,
     save_panel_settings,
 )
+from kimi_code_switch.toml_utils import dumps_toml
 from kimi_code_switch.tui import ConfigPanelApp
 
 from textual.widgets import Button, DataTable, Input, Select, Static, TabbedContent
@@ -134,6 +142,15 @@ class ConfigStoreTests(unittest.TestCase):
             self.assertTrue(saved["default_yolo"])
             self.assertEqual(saved["theme"], "light")
 
+    def test_save_state_rejects_same_config_and_profiles_path(self) -> None:
+        with TemporaryDirectory() as tmp:
+            config_path = Path(tmp) / "config.toml"
+            config_path.write_text(SAMPLE_CONFIG, encoding="utf-8")
+            state = load_state(config_path, config_path)
+
+            with self.assertRaisesRegex(ValueError, "must be different"):
+                save_state(state)
+
     def test_delete_provider_blocked_when_model_still_uses_it(self) -> None:
         with TemporaryDirectory() as tmp:
             config_path = Path(tmp) / "config.toml"
@@ -151,6 +168,24 @@ class ConfigStoreTests(unittest.TestCase):
 
             with self.assertRaisesRegex(ValueError, "still used by profile"):
                 delete_model(state, "kimi_gateway/kimi-k2.5")
+
+    def test_delete_model_blocked_when_current_default_uses_it(self) -> None:
+        with TemporaryDirectory() as tmp:
+            config_path = Path(tmp) / "config.toml"
+            config_path.write_text(SAMPLE_CONFIG, encoding="utf-8")
+            state = load_state(config_path)
+            upsert_model(
+                state,
+                name="kimi_gateway/temporary",
+                provider="kimi_gateway",
+                model="temporary",
+                max_context_size=128000,
+                capabilities=[],
+            )
+            state.main_config["default_model"] = "kimi_gateway/temporary"
+
+            with self.assertRaisesRegex(ValueError, "current default model"):
+                delete_model(state, "kimi_gateway/temporary")
 
     def test_apply_profile_missing_model_error_is_actionable(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -214,6 +249,21 @@ class ConfigStoreTests(unittest.TestCase):
 
             self.assertIn('default_model = "kimi_gateway/kimi-k2.5"', document)
             self.assertIn("[providers.kimi_gateway]", document)
+
+    def test_dumps_toml_supports_array_of_tables(self) -> None:
+        document = dumps_toml(
+            {
+                "hooks": [
+                    {"command": "echo", "args": ["hello"]},
+                    {"command": "printf", "args": ["world"]},
+                ],
+            }
+        )
+
+        parsed = tomllib.loads(document)
+        self.assertEqual(parsed["hooks"][0]["command"], "echo")
+        self.assertEqual(parsed["hooks"][1]["args"], ["world"])
+        self.assertIn("[[hooks]]", document)
 
     def test_panel_settings_defaults_and_roundtrip(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -287,10 +337,14 @@ class ConfigStoreTests(unittest.TestCase):
             self.assertIn('version "0.1.0"', formula)
             self.assertIn("kimi-code-switch-v#{version}-macos-arm64.tar.gz", formula)
             self.assertIn("kimi-code-switch-v#{version}-macos-amd64.tar.gz", formula)
+            self.assertIn('bin.install "kimi-config-switch"', formula)
+            self.assertNotIn("=>", formula)
+            self.assertIn('#{bin}/kimi-config-switch --help', formula)
+            self.assertNotIn("write_env_script", formula)
 
     def test_homebrew_cellar_version_can_be_parsed_from_path(self) -> None:
         parsed = _homebrew_cellar_version_from_path(
-            Path("/opt/homebrew/Cellar/kimi-code-switch/1.0.3/bin/kimi-config-panel")
+            Path("/opt/homebrew/Cellar/kimi-code-switch/1.0.3/bin/kimi-config-switch")
         )
 
         self.assertEqual(parsed, "1.0.3")
@@ -340,6 +394,24 @@ class ConfigStoreTests(unittest.TestCase):
 
         asyncio.run(run())
 
+    def test_textual_f10_opens_about_dialog(self) -> None:
+        async def run() -> None:
+            with TemporaryDirectory() as tmp:
+                config_path = Path(tmp) / "config.toml"
+                config_path.write_text(SAMPLE_CONFIG, encoding="utf-8")
+                state = load_state(config_path)
+                app = ConfigPanelApp(state)
+
+                async with app.run_test() as pilot:
+                    await pilot.pause()
+                    await pilot.press("f10")
+                    await pilot.pause()
+
+                    title = app.screen.query_one("#about-title", Static)
+                    self.assertIn("关于 Kimi 配置面板", str(title.render()))
+
+        asyncio.run(run())
+
     def test_textual_disables_dependent_actions_when_dependencies_missing(self) -> None:
         async def run() -> None:
             with TemporaryDirectory() as tmp:
@@ -386,8 +458,8 @@ class ConfigStoreTests(unittest.TestCase):
 
                     tabs.active = "models"
                     await pilot.pause()
-                    app.query_one("#model-name", Input).value = "gateway/kimi-k2.5"
                     app.query_one("#model-provider", Select).value = "gateway"
+                    app.query_one("#model-name", Input).value = "kimi-k2.5"
                     app.query_one("#model-remote-name", Input).value = "kimi-k2.5"
                     app.query_one("#model-context-size", Input).value = "262144"
                     app.query_one("#model-capabilities", Input).value = "thinking"
@@ -421,11 +493,13 @@ class ConfigStoreTests(unittest.TestCase):
                     await pilot.pause()
                     summary_model = app.query_one("#summary-model")
                     summary_inventory = app.query_one("#summary-inventory")
+                    about_button = app.query_one("#about-open", Button)
 
                     self.assertIn("当前生效模型", str(summary_model.render()))
-                    self.assertIn("资源概览", str(summary_inventory.render()))
+                    self.assertIn("提供方", str(summary_inventory.render()))
                     self.assertIn("F8", str(summary_model.render()))
                     self.assertIn("F9", str(summary_inventory.render()))
+                    self.assertIn("F10", str(about_button.render()))
 
         asyncio.run(run())
 
@@ -479,6 +553,41 @@ class ConfigStoreTests(unittest.TestCase):
                     await pilot.press("f9")
                     await pilot.pause()
                     self.assertTrue(summary_inventory.has_focus)
+
+        asyncio.run(run())
+
+    def test_summary_cards_support_left_right_navigation(self) -> None:
+        async def run() -> None:
+            with TemporaryDirectory() as tmp:
+                config_path = Path(tmp) / "config.toml"
+                config_path.write_text(SAMPLE_CONFIG, encoding="utf-8")
+                state = load_state(config_path)
+                app = ConfigPanelApp(state)
+
+                async with app.run_test() as pilot:
+                    summary_profile = app.query_one("#summary-profile")
+                    summary_inventory = app.query_one("#summary-inventory")
+                    summary_model = app.query_one("#summary-model")
+                    about_button = app.query_one("#about-open", Button)
+                    await pilot.pause()
+                    app.action_focus_profile_summary()
+                    await pilot.pause()
+
+                    await pilot.press("right")
+                    await pilot.pause()
+                    self.assertTrue(summary_inventory.has_focus)
+
+                    await pilot.press("right")
+                    await pilot.pause()
+                    self.assertTrue(summary_model.has_focus)
+
+                    await pilot.press("right")
+                    await pilot.pause()
+                    self.assertTrue(about_button.has_focus)
+
+                    await pilot.press("left")
+                    await pilot.pause()
+                    self.assertTrue(summary_model.has_focus)
 
         asyncio.run(run())
 
@@ -688,6 +797,50 @@ class ConfigStoreTests(unittest.TestCase):
 
         asyncio.run(run())
 
+    def test_up_from_main_menu_focuses_matching_summary_card(self) -> None:
+        async def run() -> None:
+            with TemporaryDirectory() as tmp:
+                config_path = Path(tmp) / "config.toml"
+                config_path.write_text(SAMPLE_CONFIG, encoding="utf-8")
+                state = load_state(config_path)
+                app = ConfigPanelApp(state)
+
+                async with app.run_test() as pilot:
+                    tabs = app.query_one("#tabs", TabbedContent)
+                    menu = app.query_one("#tabs > ContentTabs")
+                    summary_model = app.query_one("#summary-model")
+                    tabs.active = "models"
+                    app.set_focus(menu)
+                    await pilot.pause()
+
+                    await pilot.press("up")
+                    await pilot.pause()
+
+                    self.assertTrue(summary_model.has_focus)
+
+        asyncio.run(run())
+
+    def test_down_from_summary_card_returns_to_main_menu(self) -> None:
+        async def run() -> None:
+            with TemporaryDirectory() as tmp:
+                config_path = Path(tmp) / "config.toml"
+                config_path.write_text(SAMPLE_CONFIG, encoding="utf-8")
+                state = load_state(config_path)
+                app = ConfigPanelApp(state)
+
+                async with app.run_test() as pilot:
+                    menu = app.query_one("#tabs > ContentTabs")
+                    await pilot.pause()
+                    app.action_focus_model_summary()
+                    await pilot.pause()
+
+                    await pilot.press("down")
+                    await pilot.pause()
+
+                    self.assertTrue(menu.has_focus)
+
+        asyncio.run(run())
+
     def test_summary_card_can_open_target_list(self) -> None:
         async def run() -> None:
             with TemporaryDirectory() as tmp:
@@ -706,6 +859,40 @@ class ConfigStoreTests(unittest.TestCase):
 
                     self.assertEqual(tabs.active, "models")
                     self.assertTrue(models_table.has_focus)
+
+        asyncio.run(run())
+
+    def test_model_name_input_uses_suffix_and_provider_dropdown_prefix(self) -> None:
+        async def run() -> None:
+            with TemporaryDirectory() as tmp:
+                config_path = Path(tmp) / "config.toml"
+                config_path.write_text(SAMPLE_CONFIG, encoding="utf-8")
+                state = load_state(config_path)
+                app = ConfigPanelApp(state)
+
+                async with app.run_test() as pilot:
+                    tabs = app.query_one("#tabs", TabbedContent)
+                    tabs.active = "models"
+                    await pilot.pause()
+
+                    self.assertEqual(
+                        app.query_one("#model-name", Input).value,
+                        "kimi-k2.5",
+                    )
+
+                    app._new_model_draft()
+                    await pilot.pause()
+                    app.query_one("#model-provider", Select).value = "kimi_gateway"
+                    app.query_one("#model-name", Input).value = "new-model"
+                    app.query_one("#model-remote-name", Input).value = "new-model"
+                    app.query_one("#model-context-size", Input).value = "128000"
+                    await pilot.press("ctrl+s")
+                    await pilot.pause()
+
+                    self.assertIn(
+                        "kimi_gateway/new-model",
+                        app.state.main_config["models"],
+                    )
 
         asyncio.run(run())
 

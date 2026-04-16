@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
+from os import getpid
 from pathlib import Path
-from typing import Any
-import tomllib
+from typing import Any, Optional
 
+from ._toml import tomllib
 from .toml_utils import dumps_toml
 
 
@@ -34,7 +35,7 @@ DEFAULTS: dict[str, Any] = {
 }
 
 
-@dataclass(slots=True)
+@dataclass
 class Profile:
     name: str
     label: str
@@ -53,7 +54,7 @@ class Profile:
         return data
 
 
-@dataclass(slots=True)
+@dataclass
 class AppState:
     config_path: Path
     profiles_path: Path
@@ -62,7 +63,7 @@ class AppState:
     active_profile: str = DEFAULT_PROFILE_NAME
 
 
-def load_state(config_path: Path, profiles_path: Path | None = None) -> AppState:
+def load_state(config_path: Path, profiles_path: Optional[Path] = None) -> AppState:
     resolved_config = config_path.expanduser()
     resolved_profiles = (
         profiles_path.expanduser()
@@ -100,10 +101,20 @@ def load_state(config_path: Path, profiles_path: Path | None = None) -> AppState
 
 
 def save_state(state: AppState) -> None:
+    if state.config_path == state.profiles_path:
+        raise ValueError("Config path and profiles path must be different.")
+
+    profiles_document = build_profiles_document(state)
+    config_document = build_config_document(state)
+
     state.config_path.parent.mkdir(parents=True, exist_ok=True)
     state.profiles_path.parent.mkdir(parents=True, exist_ok=True)
-    state.profiles_path.write_text(build_profiles_document(state), encoding="utf-8")
-    state.config_path.write_text(build_config_document(state), encoding="utf-8")
+    _atomic_write_documents(
+        [
+            (state.config_path, config_document),
+            (state.profiles_path, profiles_document),
+        ]
+    )
 
 
 def clone_state(state: AppState) -> AppState:
@@ -169,7 +180,7 @@ def apply_profile(state: AppState, profile_name: str) -> None:
             _format_missing_model_error(
                 profile.default_model,
                 state.main_config["models"],
-                context=f"配置档 {profile.name}",
+                context=f"配置Profile {profile.name}",
             )
         )
 
@@ -223,6 +234,8 @@ def delete_model(state: AppState, name: str) -> None:
     for profile in state.profiles.values():
         if profile.default_model == name:
             raise ValueError(f"Model {name} is still used by profile {profile.name}.")
+    if str(state.main_config.get("default_model", "")) == name:
+        raise ValueError(f"Model {name} is still used as the current default model.")
     state.main_config["models"].pop(name, None)
 
 
@@ -244,7 +257,7 @@ def upsert_profile(
             _format_missing_model_error(
                 default_model,
                 state.main_config["models"],
-                context=f"配置档 {name or '（未命名）'}",
+                context=f"配置Profile {name or '（未命名）'}",
             )
         )
 
@@ -354,6 +367,40 @@ def _read_toml(path: Path) -> dict[str, Any]:
     return dict(data)
 
 
+def _atomic_write_documents(documents: list[tuple[Path, str]]) -> None:
+    temporary_paths: list[tuple[Path, Path]] = []
+    replaced_paths: list[tuple[Path, Optional[Path]]] = []
+    process_id = getpid()
+
+    try:
+        for index, (path, text) in enumerate(documents):
+            temporary_path = path.with_name(f".{path.name}.{process_id}.{index}.tmp")
+            temporary_path.write_text(text, encoding="utf-8")
+            temporary_paths.append((path, temporary_path))
+
+        for index, (path, temporary_path) in enumerate(temporary_paths):
+            backup_path = None
+            if path.exists():
+                backup_path = path.with_name(f".{path.name}.{process_id}.{index}.bak")
+                path.replace(backup_path)
+            temporary_path.replace(path)
+            replaced_paths.append((path, backup_path))
+    except Exception:
+        for path, backup_path in reversed(replaced_paths):
+            if path.exists():
+                path.unlink()
+            if backup_path is not None and backup_path.exists():
+                backup_path.replace(path)
+        raise
+    finally:
+        for _, temporary_path in temporary_paths:
+            if temporary_path.exists():
+                temporary_path.unlink()
+        for _, backup_path in replaced_paths:
+            if backup_path is not None and backup_path.exists():
+                backup_path.unlink()
+
+
 def _format_missing_model_error(
     model_name: str,
     models: dict[str, Any],
@@ -374,5 +421,5 @@ def _format_missing_model_error(
         f"{context}引用的默认模型不存在：{normalized_name}。"
         "这里需要填写 [models] 下的模型 key，不是 model 字段值。"
         f"{available_hint}"
-        "请先创建对应模型，或把配置档默认模型改成现有模型。"
+        "请先创建对应模型，或把配置Profile默认模型改成现有模型。"
     )
