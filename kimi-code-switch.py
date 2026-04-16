@@ -9,8 +9,8 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from kimi_code_switch.__main__ import main
+from kimi_code_switch.__main__ import kimi_code_switch
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(kimi_code_switch())

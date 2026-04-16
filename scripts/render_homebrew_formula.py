@@ -25,11 +25,11 @@ FORMULA_TEMPLATE = """class KimiCodeSwitch < Formula
   end
 
   def install
-    bin.install "kimi-config-switch"
+    bin.install "kimi-code-switch"
   end
 
   test do
-    assert_match "Terminal UI for kimi-code-cli config.toml", shell_output("#{{bin}}/kimi-config-switch --help")
+    assert_match "Terminal UI for kimi-code-cli config.toml", shell_output("#{{bin}}/kimi-code-switch --help")
   end
 end
 """

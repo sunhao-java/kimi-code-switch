@@ -42,8 +42,8 @@ jobs:
             --noconfirm \
             --onefile \
             --additional-hooks-dir pyinstaller_hooks \
-            --name kimi-config-switch \
-            run_panel.py
+            --name kimi-code-switch \
+            kimi-code-switch.py
 
       - name: Package release asset
         env:
@@ -53,7 +53,7 @@ jobs:
           mkdir -p release
           VERSION_NO_V="${VERSION#v}"
           ASSET_NAME="kimi-code-switch-v${VERSION_NO_V}-macos-${ARCH}.tar.gz"
-          tar -C dist -czf "release/${ASSET_NAME}" kimi-config-switch
+          tar -C dist -czf "release/${ASSET_NAME}" kimi-code-switch
           shasum -a 256 "release/${ASSET_NAME}" > "release/${ASSET_NAME}.sha256"
 
       - name: Upload workflow artifact

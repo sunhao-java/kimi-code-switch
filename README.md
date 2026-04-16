@@ -15,14 +15,14 @@
 
 ```bash
 cd /Users/sunhao/Documents/tools/kimi-code-switch
-python3.9 run_panel.py
+python3.9 kimi-code-switch.py
 ```
 
 或者安装成命令：
 
 ```bash
 python3.9 -m pip install -e .
-kimi-config-switch
+kimi-code-switch
 ```
 
 项目需要 Python 3.9+。发布包或本地构建可以携带 `.vendor` 依赖目录，入口会自动加载；如果你要重新安装依赖，也可以执行：
@@ -76,10 +76,10 @@ python3.9 -m pip install -e .
 发布链路如下：
 
 1. 在 GitHub 主仓库推送 `vX.Y.Z` tag。
-2. Actions 会在 GitHub Actions 当前支持的 Intel / Apple Silicon macOS runner 上构建 `kimi-config-switch` 二进制包。
+2. Actions 会在 GitHub Actions 当前支持的 Intel / Apple Silicon macOS runner 上构建 `kimi-code-switch` 二进制包。
 3. Actions 会把产物上传到对应 GitHub Release。
 4. Actions 会渲染 `Formula/kimi-code-switch.rb`，并推送到 GitHub tap 仓库 `sunhao-java/homebrew-kimi-code-switch`。
-5. tap formula 会直接安装发布资产中的 `kimi-config-switch` 命令。
+5. tap formula 会直接安装发布资产中的 `kimi-code-switch` 命令。
 6. 用户执行 `brew update && brew upgrade kimi-code-switch` 后即可拉到新版。
 
 补充说明：
@@ -111,7 +111,7 @@ tap 仓库已经切到 GitHub，按 Homebrew 约定使用：
 ```bash
 brew tap sunhaojava/kimi-code-switch git@github.com:sunhao-java/homebrew-kimi-code-switch.git
 brew install kimi-code-switch
-kimi-config-switch
+kimi-code-switch
 ```
 
 ## 说明

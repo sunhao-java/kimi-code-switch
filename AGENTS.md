@@ -128,20 +128,20 @@ class MyWidget(Static):
 ### 开发运行
 
 ```bash
-python3 run_panel.py
+python3 kimi-code-switch.py
 ```
 
 ### 安装运行
 
 ```bash
 python3 -m pip install -e .
-kimi-config-switch
+kimi-code-switch
 ```
 
 ### 命令行参数
 
 ```bash
-kimi-config-switch --config ~/.kimi/config.toml --profiles ~/.kimi/config.profiles.toml
+kimi-code-switch --config ~/.kimi/config.toml --profiles ~/.kimi/config.profiles.toml
 ```
 
 ## 常见修改场景

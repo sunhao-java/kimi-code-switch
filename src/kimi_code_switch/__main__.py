@@ -11,7 +11,7 @@ from .tui import ConfigPanelApp
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="kimi-config-switch",
+        prog="kimi-code-switch",
         description="Terminal UI for kimi-code-cli config.toml",
     )
     parser.add_argument(
@@ -30,12 +30,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--panel-settings",
         type=Path,
         default=DEFAULT_PANEL_SETTINGS_PATH,
-        help="Path to kimi-config-switch settings sidecar",
+        help="Path to kimi-code-switch settings sidecar",
     )
     return parser
 
 
-def main() -> int:
+def kimi_code_switch() -> int:
     parser = build_parser()
     args = parser.parse_args()
     try:
@@ -58,4 +58,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(kimi_code_switch())

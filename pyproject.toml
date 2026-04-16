@@ -17,7 +17,7 @@ authors = [
 ]
 
 [project.scripts]
-kimi-config-switch = "kimi_code_switch.__main__:main"
+kimi-code-switch = "kimi_code_switch.__main__:kimi_code_switch"
 
 [tool.setuptools]
 package-dir = { "" = "src" }

@@ -6,6 +6,7 @@ import sys
 from tempfile import TemporaryDirectory
 import unittest
 import asyncio
+import importlib
 
 try:
     import tomllib
@@ -26,6 +27,7 @@ from kimi_code_switch import (
     __version__,
     _homebrew_cellar_version_from_path,
 )
+from kimi_code_switch.__main__ import kimi_code_switch
 from kimi_code_switch.config_store import (
     build_config_document,
     clone_profile,
@@ -337,17 +339,22 @@ class ConfigStoreTests(unittest.TestCase):
             self.assertIn('version "0.1.0"', formula)
             self.assertIn("kimi-code-switch-v#{version}-macos-arm64.tar.gz", formula)
             self.assertIn("kimi-code-switch-v#{version}-macos-amd64.tar.gz", formula)
-            self.assertIn('bin.install "kimi-config-switch"', formula)
+            self.assertIn('bin.install "kimi-code-switch"', formula)
             self.assertNotIn("=>", formula)
-            self.assertIn('#{bin}/kimi-config-switch --help', formula)
+            self.assertIn('#{bin}/kimi-code-switch --help', formula)
             self.assertNotIn("write_env_script", formula)
 
     def test_homebrew_cellar_version_can_be_parsed_from_path(self) -> None:
         parsed = _homebrew_cellar_version_from_path(
-            Path("/opt/homebrew/Cellar/kimi-code-switch/1.0.3/bin/kimi-config-switch")
+            Path("/opt/homebrew/Cellar/kimi-code-switch/1.0.3/bin/kimi-code-switch")
         )
 
         self.assertEqual(parsed, "1.0.3")
+
+    def test_cli_entry_function_is_named_kimi_code_switch(self) -> None:
+        module = importlib.import_module("kimi_code_switch.__main__")
+
+        self.assertIs(module.kimi_code_switch, kimi_code_switch)
 
     def test_textual_app_mounts_and_populates_tables(self) -> None:
         async def run() -> None:
