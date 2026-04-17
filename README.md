@@ -128,4 +128,12 @@ kimi-code-switch
 python3 -m unittest tests.test_config_store
 ```
 
+## License
+
+本项目使用 [MIT License](/Users/sunhao/Documents/tools/kimi-code-switch/LICENSE)。
+
+## 友链推荐
+
+- [Linux.do](https://linux.do) - 一个高质量的开源技术社区，适合交流工具、开发效率与 AI 相关实践。
+
 版本历史见 [CHANGELOG.md](/Users/sunhao/Documents/tools/kimi-code-switch/CHANGELOG.md)。
