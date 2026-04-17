@@ -101,7 +101,7 @@ SHORTCUT_SCHEME_OPTIONS = tuple(
 )
 
 ABOUT_LINES = (
-    ("英文名", "Hulk Sun"),
+    ("作者", "Hulk Sun"),
     ("GitHub", "https://github.com/sunhao-java"),
     ("博客", "https://www.crazy-coder.cn"),
     ("邮箱", "sunhao.java@gmail.com"),
@@ -214,10 +214,72 @@ class AboutDialog(ModalScreen[None]):
     #about-close {
         margin-top: 1;
         width: 16;
+        border: none;
+    }
+
+    #about-close:focus {
+        border: none;
+    }
+
+    AboutDialog.-theme-graphite {
+        background: rgba(10, 10, 12, 0.82);
+    }
+
+    AboutDialog.-theme-graphite #about-dialog {
+        background: #16181d;
+        border: round #646b75;
+    }
+
+    AboutDialog.-theme-graphite #about-title {
+        color: #dde2ea;
+    }
+
+    AboutDialog.-theme-graphite .about-section {
+        color: #c8ced9;
+    }
+
+    AboutDialog.-theme-graphite #about-version {
+        color: #a7b0bd;
+    }
+
+    AboutDialog.-theme-graphite Button.-primary {
+        background: #6d7582;
+        color: #0f1115;
+    }
+
+    AboutDialog.-theme-ember {
+        background: rgba(22, 11, 5, 0.8);
+    }
+
+    AboutDialog.-theme-ember #about-dialog {
+        background: #25150d;
+        border: round #f59e0b;
+    }
+
+    AboutDialog.-theme-ember #about-title {
+        color: #ffd08a;
+    }
+
+    AboutDialog.-theme-ember .about-section {
+        color: #f3d7bc;
+    }
+
+    AboutDialog.-theme-ember #about-version {
+        color: #fbbf24;
+    }
+
+    AboutDialog.-theme-ember Button.-primary {
+        background: #c97316;
+        color: #fff7ed;
     }
     """
 
     BINDINGS = [Binding("escape", "close_about", "关闭", show=False)]
+
+    def __init__(self, theme_name: str = DEFAULT_THEME) -> None:
+        super().__init__()
+        if theme_name in {"graphite", "ember"}:
+            self.add_class(f"-theme-{theme_name}")
 
     def compose(self) -> ComposeResult:
         info_lines = "\n".join(f"{label}：{value}" for label, value in ABOUT_LINES)
@@ -1062,7 +1124,7 @@ class ConfigPanelApp(App[None]):
         self._apply_theme()
         self._refresh_summary()
         self._refresh_help()
-        self.call_after_refresh(self._focus_main_menu)
+        self.call_after_refresh(lambda: self._focus_summary_card("profiles"))
         self._set_status("界面已就绪。")
 
     def action_new_item(self) -> None:
@@ -1110,7 +1172,7 @@ class ConfigPanelApp(App[None]):
         self._open_preview()
 
     def action_show_about(self) -> None:
-        self.push_screen(AboutDialog())
+        self.push_screen(AboutDialog(self.panel_settings.theme))
 
     def action_switch_to_profiles(self) -> None:
         self._switch_main_tab("profiles")
@@ -1190,17 +1252,21 @@ class ConfigPanelApp(App[None]):
         if preview_tabs is not None and self.focused is preview_tabs:
             preview_tabs.action_next_tab()
             return
+        if self._cycle_focus_within_row(1):
+            return
         self.action_focus_next()
 
     def action_previous_menu(self) -> None:
         tabs = self._main_tabs_widget()
         focused = self.focused
         if focused is tabs:
-            self.action_focus_previous()
+            tabs.action_previous_tab()
             return
         preview_tabs = self._preview_tabs_widget_optional()
         if preview_tabs is not None and focused is preview_tabs:
-            self._focus_main_menu()
+            preview_tabs.action_previous_tab()
+            return
+        if self._cycle_focus_within_row(-1):
             return
         if focused is self._current_list_widget() or self._is_filter_widget(focused):
             self._focus_main_menu()
@@ -1244,12 +1310,15 @@ class ConfigPanelApp(App[None]):
             self._set_status("已从预览下层标签返回顶部菜单。")
             return
         if self._is_editor_widget(self.focused):
-            self._focus_main_menu()
-            self._set_status(f"已从{self._tab_label(self._active_tab())}编辑区返回顶部菜单。")
+            self._focus_current_list()
+            self._set_status(f"已从{self._tab_label(self._active_tab())}编辑区返回列表。")
             return
         if self._is_preview_panel_widget(self.focused):
-            self._focus_main_menu()
-            self._set_status("已从预览内容返回顶部菜单。")
+            self._focus_preview_tabs()
+            self._set_status("已从预览内容返回预览页签。")
+            return
+        if self.focused is self._main_tabs_widget():
+            self.action_focus_summary_from_menu()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         actions = {
@@ -2762,6 +2831,30 @@ class ConfigPanelApp(App[None]):
             "providers": "#providers-filter",
             "models": "#models-filter",
         }.get(tab_id)
+
+    def _cycle_focus_within_row(self, step: int) -> bool:
+        focused = self.focused
+        if not isinstance(focused, Widget):
+            return False
+        parent = focused.parent
+        if not isinstance(parent, Horizontal):
+            return False
+
+        siblings: list[Widget] = []
+        for child in parent.children:
+            if not getattr(child, "can_focus", False):
+                continue
+            if getattr(child, "disabled", False):
+                continue
+            siblings.append(child)
+
+        if len(siblings) < 2 or focused not in siblings:
+            return False
+
+        index = siblings.index(focused)
+        next_index = (index + step) % len(siblings)
+        self.set_focus(siblings[next_index])
+        return True
 
     def _filter_tab_id(self, widget_id: str) -> str:
         return {

@@ -419,6 +419,26 @@ class ConfigStoreTests(unittest.TestCase):
 
         asyncio.run(run())
 
+    def test_textual_about_dialog_uses_active_theme(self) -> None:
+        async def run() -> None:
+            with TemporaryDirectory() as tmp:
+                config_path = Path(tmp) / "config.toml"
+                config_path.write_text(SAMPLE_CONFIG, encoding="utf-8")
+                state = load_state(config_path)
+                app = ConfigPanelApp(
+                    state,
+                    default_panel_settings(theme="graphite"),
+                )
+
+                async with app.run_test() as pilot:
+                    await pilot.pause()
+                    app.action_show_about()
+                    await pilot.pause()
+
+                    self.assertTrue(app.screen.has_class("-theme-graphite"))
+
+        asyncio.run(run())
+
     def test_textual_disables_dependent_actions_when_dependencies_missing(self) -> None:
         async def run() -> None:
             with TemporaryDirectory() as tmp:
@@ -707,7 +727,7 @@ class ConfigStoreTests(unittest.TestCase):
 
         asyncio.run(run())
 
-    def test_tab_switches_main_menu_when_menu_is_focused(self) -> None:
+    def test_tab_cycles_within_summary_row(self) -> None:
         async def run() -> None:
             with TemporaryDirectory() as tmp:
                 config_path = Path(tmp) / "config.toml"
@@ -716,13 +736,17 @@ class ConfigStoreTests(unittest.TestCase):
                 app = ConfigPanelApp(state)
 
                 async with app.run_test() as pilot:
-                    tabs = app.query_one("#tabs", TabbedContent)
+                    summary_profile = app.query_one("#summary-profile")
+                    summary_inventory = app.query_one("#summary-inventory")
                     await pilot.pause()
 
-                    self.assertEqual(tabs.active, "profiles")
+                    app.set_focus(summary_profile)
+                    await pilot.pause()
+
                     await pilot.press("tab")
                     await pilot.pause()
-                    self.assertEqual(tabs.active, "providers")
+
+                    self.assertTrue(summary_inventory.has_focus)
 
         asyncio.run(run())
 
@@ -903,7 +927,7 @@ class ConfigStoreTests(unittest.TestCase):
 
         asyncio.run(run())
 
-    def test_escape_returns_from_editor_to_main_menu(self) -> None:
+    def test_escape_returns_from_editor_to_list(self) -> None:
         async def run() -> None:
             with TemporaryDirectory() as tmp:
                 config_path = Path(tmp) / "config.toml"
@@ -913,7 +937,7 @@ class ConfigStoreTests(unittest.TestCase):
 
                 async with app.run_test() as pilot:
                     await pilot.pause()
-                    menu = app.query_one("#tabs > ContentTabs")
+                    profiles_table = app.query_one("#profiles-table", DataTable)
                     profile_name = app.query_one("#profile-name", Input)
 
                     await pilot.press("enter")
@@ -924,7 +948,7 @@ class ConfigStoreTests(unittest.TestCase):
 
                     await pilot.press("escape")
                     await pilot.pause()
-                    self.assertTrue(menu.has_focus)
+                    self.assertTrue(profiles_table.has_focus)
 
         asyncio.run(run())
 
@@ -951,7 +975,7 @@ class ConfigStoreTests(unittest.TestCase):
 
         asyncio.run(run())
 
-    def test_shift_tab_returns_from_editor_to_main_menu(self) -> None:
+    def test_escape_returns_from_main_menu_to_summary(self) -> None:
         async def run() -> None:
             with TemporaryDirectory() as tmp:
                 config_path = Path(tmp) / "config.toml"
@@ -962,15 +986,85 @@ class ConfigStoreTests(unittest.TestCase):
                 async with app.run_test() as pilot:
                     await pilot.pause()
                     menu = app.query_one("#tabs > ContentTabs")
-                    profile_name = app.query_one("#profile-name", Input)
+                    summary_profile = app.query_one("#summary-profile")
 
-                    await pilot.press("enter")
-                    await pilot.pause()
-                    await pilot.press("enter")
-                    await pilot.pause()
-                    self.assertTrue(profile_name.has_focus)
+                    self.assertTrue(menu.has_focus)
 
+                    await pilot.press("escape")
+                    await pilot.pause()
+                    self.assertTrue(summary_profile.has_focus)
+
+        asyncio.run(run())
+
+    def test_shift_tab_cycles_backward_within_button_row(self) -> None:
+        async def run() -> None:
+            with TemporaryDirectory() as tmp:
+                config_path = Path(tmp) / "config.toml"
+                config_path.write_text(SAMPLE_CONFIG, encoding="utf-8")
+                state = load_state(config_path)
+                app = ConfigPanelApp(state)
+
+                async with app.run_test() as pilot:
+                    profile_new = app.query_one("#profile-new", Button)
+                    profile_delete = app.query_one("#profile-delete", Button)
+                    await pilot.pause()
+
+                    app.set_focus(profile_new)
+                    await pilot.pause()
                     await pilot.press("shift+tab")
+                    await pilot.pause()
+
+                    self.assertTrue(profile_delete.has_focus)
+
+        asyncio.run(run())
+
+    def test_tab_wraps_from_button_row_end_to_start(self) -> None:
+        async def run() -> None:
+            with TemporaryDirectory() as tmp:
+                config_path = Path(tmp) / "config.toml"
+                config_path.write_text(SAMPLE_CONFIG, encoding="utf-8")
+                state = load_state(config_path)
+                app = ConfigPanelApp(state)
+
+                async with app.run_test() as pilot:
+                    profile_new = app.query_one("#profile-new", Button)
+                    profile_delete = app.query_one("#profile-delete", Button)
+                    await pilot.pause()
+
+                    app.set_focus(profile_delete)
+                    await pilot.pause()
+                    await pilot.press("tab")
+                    await pilot.pause()
+
+                    self.assertTrue(profile_new.has_focus)
+
+        asyncio.run(run())
+
+    def test_down_moves_to_next_row_and_up_moves_back(self) -> None:
+        async def run() -> None:
+            with TemporaryDirectory() as tmp:
+                config_path = Path(tmp) / "config.toml"
+                config_path.write_text(SAMPLE_CONFIG, encoding="utf-8")
+                state = load_state(config_path)
+                app = ConfigPanelApp(state)
+
+                async with app.run_test() as pilot:
+                    summary_profile = app.query_one("#summary-profile")
+                    menu = app.query_one("#tabs > ContentTabs")
+                    profiles_filter = app.query_one("#profiles-filter", Input)
+
+                    app.set_focus(summary_profile)
+                    await pilot.pause()
+
+                    await pilot.press("down")
+                    await pilot.pause()
+                    self.assertTrue(menu.has_focus)
+
+                    await pilot.press("down")
+                    await pilot.pause()
+                    self.assertTrue(profiles_filter.has_focus)
+
+                    await pilot.press("up")
                     await pilot.pause()
                     self.assertTrue(menu.has_focus)
 
