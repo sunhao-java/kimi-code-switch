@@ -1,112 +1,111 @@
 # kimi-code-switch
 
-一个基于终端 TUI 的 `kimi-code-cli` 配置面板，用来管理 `~/.kimi/config.toml` 里的 `providers`、`models`，并通过 profile 完成多套配置切换，同时支持面板自身的主题、快捷键方案和配置文件路径设置。
+`kimi-code-switch` 是一个基于 `Textual` 的终端配置面板，用于管理 `kimi-code-cli` 的主配置、模型、提供方和多套 `Profile`。
 
-当前界面基于 `Textual`，比原始 `curses` 方案更适合做列表、表单和页签切换。
+它面向这些场景：
+- 维护 `~/.kimi/config.toml` 中的 `providers`、`models` 和默认项
+- 用 `config.profiles.toml` 管理多套配置组合，并一键切换
+- 独立保存面板自己的主题、快捷键方案和配置文件路径
 
-## 设计
+## 功能概览
 
-- `config.toml` 继续作为 `kimi-code-cli` 的主配置文件，里面保存实际生效的 `providers`、`models` 和当前默认项。
-- `config.profiles.toml` 作为 sidecar 文件，保存多套 profile 定义。
-- `config.panel.toml` 作为面板 sidecar，保存 TUI 主题、快捷键方案，以及 `kimi-code-cli` 配置文件路径。
-- 当你在 TUI 里激活某个 profile 时，工具会把该 profile 的默认值同步写回 `config.toml`。
+- 维护 `providers / models / Profile`
+- 激活 `Profile` 时自动把默认值写回 `config.toml`
+- 支持预览 `config.toml`、`config.profiles.toml` 和对应 diff
+- 支持面板主题、快捷键方案、配置路径持久化
+- 支持 Homebrew 发布与独立二进制分发
 
-## 运行
+## 配置文件
+
+- 主配置：`~/.kimi/config.toml`
+- Profile sidecar：`~/.kimi/config.profiles.toml`
+- 面板设置：`~/.kimi/config.panel.toml`
+
+职责划分如下：
+- `config.toml`：当前实际生效的 `providers`、`models`、默认模型和默认开关
+- `config.profiles.toml`：多套 `Profile` 定义
+- `config.panel.toml`：面板主题、快捷键方案、配置路径
+
+## 安装与运行
+
+项目支持 Python `3.9+`。
+
+开发运行：
 
 ```bash
 cd /Users/sunhao/Documents/tools/kimi-code-switch
-python3.9 kimi-code-switch.py
+python3 kimi-code-switch.py
 ```
 
-或者安装成命令：
+安装为命令：
 
 ```bash
-python3.9 -m pip install -e .
+python3 -m pip install .
 kimi-code-switch
 ```
 
-项目需要 Python 3.9+。发布包或本地构建可以携带 `.vendor` 依赖目录，入口会自动加载；如果你要重新安装依赖，也可以执行：
+如果本地是较老的 `pip`，建议先升级：
 
 ```bash
-python3.9 -m pip install -e .
+python3 -m pip install --upgrade pip setuptools wheel
+python3 -m pip install .
 ```
 
-## 键位
+## 核心交互
 
-- `Left/Right` 或 `h/l`: 切换页签
-- `Ctrl+1..6`: 快速切换 `配置Profile / 提供方 / 模型 / 预览 / 设置 / 帮助`
-- `F7..F9`: 快速聚焦上方 `当前配置Profile / 当前生效模型 / 提供方` 卡片，再按 `Enter` 进入对应列表
-- `F10`: 打开“关于”信息
-- `↑`: 顶部页签聚焦时，进入对应的上方摘要卡
-- `Tab`: 顶部菜单切换；预览下层标签内切换预览页签；其他场景切到下一项
-- `Shift+Tab`: 列表/编辑区回顶部菜单，其他场景回上一项
-- `Enter`: 菜单进入列表；预览页进入下层标签；列表进入右侧编辑区
-- 方向键：在列表、下拉和输入框内正常移动
-- `Ctrl+N`: 当前页新建草稿
-- `Ctrl+S`: 保存当前表单
-- `Ctrl+D`: 删除当前选中项
-- `Ctrl+C`: 在“配置Profile”页克隆当前配置Profile为新草稿
-- `Ctrl+A`: 在“配置Profile”页激活当前配置Profile
-- `/` 或 `Ctrl+F`: 聚焦当前列表页搜索框
-- `Esc`: 列表页、编辑页、预览区返回顶部菜单；搜索框有内容时先清空搜索
-- `F6`: 打开“预览”页，查看将写回的 `config.toml` / `config.profiles.toml` 以及 diff
-- `q`: 退出
+- `Ctrl+1..6`：切换 `配置Profile / 提供方 / 模型 / 预览 / 设置 / 帮助`
+- `F7..F9`：聚焦顶部摘要卡
+- `F10`：打开“关于”弹框
+- `Enter`：进入下一级区域
+- `Esc`：按层级返回
+- `Tab / Shift+Tab`：在同一水平操作行内切换
+- `/` 或 `Ctrl+F`：聚焦搜索框
+- `Ctrl+N`：新建草稿
+- `Ctrl+S`：保存
+- `Ctrl+D`：删除
+- `Ctrl+C`：克隆当前 `Profile`
+- `Ctrl+A`：激活当前 `Profile`
+- `F6`：打开预览
+- `q`：退出
 
-设置页默认值：
+当前焦点层级大致为：
+- 顶部摘要卡
+- 主 tab 页
+- 左侧列表
+- 右侧编辑区
+- 预览子页签 / 预览内容
 
-- 主配置文件：`~/.kimi/config.toml`
-- 配置Profile文件：默认跟随主配置目录，指向 `~/.kimi/config.profiles.toml`
-- 面板设置文件：`~/.kimi/config.panel.toml`
-- TUI 主题：`深海蓝（默认）`
-- 快捷键方案：`标准方案（默认）`
+## 使用说明
 
-## 文件
+- 首次运行如果不存在 `config.profiles.toml`，会自动生成一个 `default` Profile
+- `Profile` 的默认模型通过下拉选择，不需要手输
+- 模型的提供方通过下拉选择，模型名输入框只填写不含提供方前缀的后缀
+- 删除提供方前会检查是否仍被模型引用
+- 删除模型前会检查是否仍被 `Profile` 或当前默认模型引用
+- 保存前可以先进入预览页查看生成结果和 diff
 
-- 主配置：`~/.kimi/config.toml`
-- profile：`~/.kimi/config.profiles.toml`
-- 面板设置：`~/.kimi/config.panel.toml`
+## 内置主题
+
+- 深海蓝（默认）
+- 石墨灰
+- 琥珀终端
 
 ## Homebrew 发布
 
-项目已经预留了 Homebrew 发布所需的两部分：
+仓库已内置 Homebrew 发布流程：
 
-- 主仓库内的 GitHub Actions：见 `.github/workflows/release-homebrew.yml`
-- 同级 tap 仓库：`../homebrew-kimi-code-switch`
-
-发布链路如下：
-
-1. 在 GitHub 主仓库推送 `vX.Y.Z` tag。
-2. Actions 会在 GitHub Actions 当前支持的 Intel / Apple Silicon macOS runner 上构建 `kimi-code-switch` 二进制包。
-3. Actions 会把产物上传到对应 GitHub Release。
-4. Actions 会渲染 `Formula/kimi-code-switch.rb`，并推送到 GitHub tap 仓库 `sunhao-java/homebrew-kimi-code-switch`。
-5. tap formula 会直接安装发布资产中的 `kimi-code-switch` 命令。
-6. 用户执行 `brew update && brew upgrade kimi-code-switch` 后即可拉到新版。
-
-补充说明：
-
-- 发布构建会通过 `pyinstaller_hooks/hook-textual.py` 显式收集 `Textual` 的懒加载模块，避免 Homebrew 安装后的独立二进制在运行时缺少 `textual.widgets.*` 内部模块。
-
-### 需要的 GitHub Secrets
-
-- `TAP_GITHUB_TOKEN`
-  用于让 GitHub Actions 推送 `sunhao-java/homebrew-kimi-code-switch` 仓库。建议使用 fine-grained PAT，只授予该 tap 仓库的 `Contents: Read and write` 权限。
-
-### 发布前准备
-
-- 在 GitHub 创建仓库 `sunhao-java/homebrew-kimi-code-switch`
-- 确保 tap 仓库默认分支已存在，并包含 `Formula/` 目录
-- 在 GitHub 主仓库配置好 `TAP_GITHUB_TOKEN`
-
-### tap 仓库命名
-
-按 Homebrew 约定，tap 仓库名使用 `homebrew-<name>`，这里对应：
-
-- 仓库名：`homebrew-kimi-code-switch`
+- GitHub Actions 工作流：`.github/workflows/release-homebrew.yml`
+- tap 仓库：`sunhao-java/homebrew-kimi-code-switch`
 - formula 路径：`Formula/kimi-code-switch.rb`
 
-### 使用 tap 安装
+发布流程：
 
-tap 仓库已经切到 GitHub，按 Homebrew 约定使用：
+1. 推送 `vX.Y.Z` tag
+2. Actions 构建 macOS `amd64 / arm64` 二进制
+3. 上传 GitHub Release 产物
+4. 渲染并推送 Homebrew formula
+
+使用方式：
 
 ```bash
 brew tap sunhaojava/kimi-code-switch git@github.com:sunhao-java/homebrew-kimi-code-switch.git
@@ -114,22 +113,19 @@ brew install kimi-code-switch
 kimi-code-switch
 ```
 
-## 说明
+## 开发说明
 
-- 首次运行如果不存在 profile sidecar，会根据当前 `config.toml` 自动生成一个 `default` profile。
-- 配置Profile的默认模型通过列表选择，不需要手输。
-- 模型绑定的提供方通过列表选择，模型名称输入框只填写不含提供方前缀的后缀。
-- 顶部摘要卡支持聚焦后回车直达对应列表。
-- 设置页支持修改 `kimi-code-cli` 主配置路径、profile sidecar 路径、TUI 主题和快捷键方案。
-- 设置页提供默认值参考，并支持“恢复默认值”“重新载入”“保存设置”。
-- 主题目前内置 `深海蓝 / 石墨灰 / 琥珀终端` 三套风格。
-- 快捷键方案目前内置 `标准方案` 和 `字母增强`，后者会在标准方案基础上追加一组 `Ctrl+Shift+...` 快捷键。
-- 预览页支持先进入下层标签，再切换 `config.toml / 配置 Diff / profiles / 配置Profile Diff / 仅看变更`。
-- 键盘导航支持“顶部菜单 -> 列表 -> 编辑区”的进入路径，列表页和编辑页都可 `Esc` 回顶部菜单，编辑页也可 `Shift+Tab` 回顶部菜单。
-- 列表支持实时搜索过滤，可通过快捷键快速聚焦搜索框、`Esc` 清空搜索，并高亮命中词。
-- 预览页提供完整文件、diff，以及“仅看变更”的紧凑视图。
-- “仅看变更”会按新增、删除、修改分类展示。
-- 保存前可以进入“预览”页查看生成的配置文本和 unified diff。
-- 删除 provider 前会检查是否仍被 model 使用。
-- 删除 model 前会检查是否仍被 profile 使用。
-- `scripts/render_homebrew_formula.py` 用于把 GitHub Release 产物信息渲染成 Homebrew formula，供发布工作流和 tap 仓库复用。
+- 入口脚本：`kimi-code-switch.py`
+- CLI 入口：`src/kimi_code_switch/__main__.py`
+- 状态与持久化：`src/kimi_code_switch/config_store.py`
+- 面板设置：`src/kimi_code_switch/panel_settings.py`
+- TUI 主界面：`src/kimi_code_switch/tui.py`
+- TOML 输出：`src/kimi_code_switch/toml_utils.py`
+
+运行测试：
+
+```bash
+python3 -m unittest tests.test_config_store
+```
+
+版本历史见 [CHANGELOG.md](/Users/sunhao/Documents/tools/kimi-code-switch/CHANGELOG.md)。
