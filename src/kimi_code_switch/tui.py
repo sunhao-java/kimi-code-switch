@@ -1432,6 +1432,16 @@ class ConfigPanelApp(App[None]):
         event.stop()
         self.run_action(action_name)
 
+    def key_down(self, event) -> None:
+        if self._is_summary_widget(self.focused):
+            event.stop()
+            self.focus_main_menu_from_summary()
+
+    def key_up(self, event) -> None:
+        if self.focused is self._main_tabs_widget():
+            event.stop()
+            self.action_focus_summary_from_menu()
+
     def _configure_tables(self) -> None:
         profiles_table = self.query_one("#profiles-table", DataTable)
         profiles_table.cursor_type = "row"

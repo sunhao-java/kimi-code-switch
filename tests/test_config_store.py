@@ -628,9 +628,12 @@ class ConfigStoreTests(unittest.TestCase):
 
                 async with app.run_test() as pilot:
                     tabs = app.query_one("#tabs", TabbedContent)
+                    menu = app.query_one("#tabs > ContentTabs")
                     tabs.active = "preview"
                     await pilot.pause()
 
+                    app.set_focus(menu)
+                    await pilot.pause()
                     await pilot.press("enter")
                     await pilot.pause()
                     self.assertTrue(app.query_one("#preview-tabs > ContentTabs").has_focus)
@@ -648,9 +651,12 @@ class ConfigStoreTests(unittest.TestCase):
                 async with app.run_test() as pilot:
                     tabs = app.query_one("#tabs", TabbedContent)
                     preview_tabs = app.query_one("#preview-tabs", TabbedContent)
+                    menu = app.query_one("#tabs > ContentTabs")
                     tabs.active = "preview"
                     await pilot.pause()
 
+                    app.set_focus(menu)
+                    await pilot.pause()
                     await pilot.press("enter")
                     await pilot.pause()
                     self.assertEqual(preview_tabs.active, "preview-config")
@@ -750,7 +756,7 @@ class ConfigStoreTests(unittest.TestCase):
 
         asyncio.run(run())
 
-    def test_enter_moves_from_menu_to_list_to_editor(self) -> None:
+    def test_enter_moves_from_summary_to_list_to_editor(self) -> None:
         async def run() -> None:
             with TemporaryDirectory() as tmp:
                 config_path = Path(tmp) / "config.toml"
@@ -760,11 +766,11 @@ class ConfigStoreTests(unittest.TestCase):
 
                 async with app.run_test() as pilot:
                     await pilot.pause()
-                    menu = app.query_one("#tabs > ContentTabs")
+                    summary_profile = app.query_one("#summary-profile")
                     profiles_table = app.query_one("#profiles-table", DataTable)
                     profile_name = app.query_one("#profile-name", Input)
 
-                    self.assertTrue(menu.has_focus)
+                    self.assertTrue(summary_profile.has_focus)
 
                     await pilot.press("enter")
                     await pilot.pause()
@@ -838,12 +844,12 @@ class ConfigStoreTests(unittest.TestCase):
 
                 async with app.run_test() as pilot:
                     tabs = app.query_one("#tabs", TabbedContent)
-                    menu = app.query_one("#tabs > ContentTabs")
                     summary_model = app.query_one("#summary-model")
                     tabs.active = "models"
-                    app.set_focus(menu)
                     await pilot.pause()
 
+                    await pilot.press("down")
+                    await pilot.pause()
                     await pilot.press("up")
                     await pilot.pause()
 
@@ -988,6 +994,8 @@ class ConfigStoreTests(unittest.TestCase):
                     menu = app.query_one("#tabs > ContentTabs")
                     summary_profile = app.query_one("#summary-profile")
 
+                    app.set_focus(menu)
+                    await pilot.pause()
                     self.assertTrue(menu.has_focus)
 
                     await pilot.press("escape")
@@ -1040,7 +1048,7 @@ class ConfigStoreTests(unittest.TestCase):
 
         asyncio.run(run())
 
-    def test_down_moves_to_next_row_and_up_moves_back(self) -> None:
+    def test_down_moves_from_summary_to_main_menu_and_up_moves_back(self) -> None:
         async def run() -> None:
             with TemporaryDirectory() as tmp:
                 config_path = Path(tmp) / "config.toml"
@@ -1060,13 +1068,9 @@ class ConfigStoreTests(unittest.TestCase):
                     await pilot.pause()
                     self.assertTrue(menu.has_focus)
 
-                    await pilot.press("down")
-                    await pilot.pause()
-                    self.assertTrue(profiles_filter.has_focus)
-
                     await pilot.press("up")
                     await pilot.pause()
-                    self.assertTrue(menu.has_focus)
+                    self.assertTrue(summary_profile.has_focus)
 
         asyncio.run(run())
 
