@@ -50,6 +50,7 @@ from kimi_code_switch.panel_settings import (
     save_panel_settings,
 )
 from kimi_code_switch.toml_utils import dumps_toml
+from kimi_code_switch.preview import extract_compact_diff_lines, render_compact_sections
 from kimi_code_switch.tui import ConfigPanelApp
 
 from textual.widgets import Button, DataTable, Input, Select, Static, TabbedContent
@@ -524,8 +525,8 @@ class ConfigStoreTests(unittest.TestCase):
 
                     self.assertIn("当前生效模型", str(summary_model.render()))
                     self.assertIn("提供方", str(summary_inventory.render()))
-                    self.assertIn("F8", str(summary_model.render()))
-                    self.assertIn("F9", str(summary_inventory.render()))
+                    self.assertIn("F9", str(summary_model.render()))
+                    self.assertIn("F8", str(summary_inventory.render()))
                     self.assertIn("F10", str(about_button.render()))
 
         asyncio.run(run())
@@ -573,11 +574,11 @@ class ConfigStoreTests(unittest.TestCase):
                     summary_inventory = app.query_one("#summary-inventory")
                     await pilot.pause()
 
-                    await pilot.press("f8")
+                    await pilot.press("f9")
                     await pilot.pause()
                     self.assertTrue(summary_model.has_focus)
 
-                    await pilot.press("f9")
+                    await pilot.press("f8")
                     await pilot.pause()
                     self.assertTrue(summary_inventory.has_focus)
 
@@ -1090,8 +1091,8 @@ class ConfigStoreTests(unittest.TestCase):
             ]
         )
 
-        changes = ConfigPanelApp._extract_compact_diff_lines(app, diff_text)
-        rendered = ConfigPanelApp._render_compact_sections(app, changes)
+        changes = extract_compact_diff_lines(diff_text)
+        rendered = render_compact_sections(changes)
 
         self.assertEqual(
             changes,
@@ -1231,6 +1232,89 @@ class ConfigStoreTests(unittest.TestCase):
                     self.assertTrue(row[0].spans)
 
         asyncio.run(run())
+
+    def test_load_state_handles_malformed_toml(self) -> None:
+        with TemporaryDirectory() as tmp:
+            config_path = Path(tmp) / "config.toml"
+            config_path.write_text("this is not valid toml {{{", encoding="utf-8")
+
+            with self.assertRaises(Exception):
+                load_state(config_path)
+
+    def test_load_state_handles_missing_config_file(self) -> None:
+        with TemporaryDirectory() as tmp:
+            config_path = Path(tmp) / "nonexistent.toml"
+
+            state = load_state(config_path)
+
+            self.assertIn("default", state.profiles)
+            self.assertEqual(state.main_config["models"], {})
+            self.assertEqual(state.main_config["providers"], {})
+
+    def test_unicode_profile_name_roundtrip(self) -> None:
+        with TemporaryDirectory() as tmp:
+            config_path = Path(tmp) / "config.toml"
+            config_path.write_text(SAMPLE_CONFIG, encoding="utf-8")
+            state = load_state(config_path)
+
+            upsert_profile(
+                state,
+                name="默认配置",
+                label="默认配置",
+                default_model="kimi_gateway/kimi-k2.5",
+                default_thinking=True,
+                default_yolo=False,
+                default_plan_mode=False,
+                default_editor="",
+                theme="dark",
+                show_thinking_stream=False,
+                merge_all_available_skills=False,
+            )
+            save_state(state)
+
+            reloaded = load_state(config_path)
+            self.assertIn("默认配置", reloaded.profiles)
+            self.assertEqual(reloaded.profiles["默认配置"].label, "默认配置")
+
+    def test_delete_last_provider_when_no_models(self) -> None:
+        with TemporaryDirectory() as tmp:
+            config_path = Path(tmp) / "config.toml"
+            config_path.write_text(
+                '[providers.gateway]\ntype = "kimi"\nbase_url = "https://x"\napi_key = "sk"\n'
+                "[models]\n[profiles]\nversion = 1\n"
+                '[profiles.default]\nlabel = "D"\ndefault_model = ""\n',
+                encoding="utf-8",
+            )
+            state = load_state(config_path)
+
+            delete_provider(state, "gateway")
+
+            self.assertNotIn("gateway", state.main_config["providers"])
+
+    def test_compact_diff_no_changes(self) -> None:
+        app = ConfigPanelApp.__new__(ConfigPanelApp)
+        changes = extract_compact_diff_lines("# 无变更\n")
+        self.assertEqual(changes, {"added": [], "removed": [], "modified": []})
+
+    def test_compact_diff_only_additions(self) -> None:
+        app = ConfigPanelApp.__new__(ConfigPanelApp)
+        diff_text = "\n".join(
+            ["--- before", "+++ after", "@@ -1,0 +1,2 @@", '+new_key = "a"', '+another = "b"']
+        )
+        changes = extract_compact_diff_lines(diff_text)
+        self.assertEqual(len(changes["added"]), 2)
+        self.assertEqual(len(changes["removed"]), 0)
+        self.assertEqual(len(changes["modified"]), 0)
+
+    def test_compact_diff_only_removals(self) -> None:
+        app = ConfigPanelApp.__new__(ConfigPanelApp)
+        diff_text = "\n".join(
+            ["--- before", "+++ after", "@@ -1,2 +1,0 @@", '-old_key = "a"', '-another = "b"']
+        )
+        changes = extract_compact_diff_lines(diff_text)
+        self.assertEqual(len(changes["added"]), 0)
+        self.assertEqual(len(changes["removed"]), 2)
+        self.assertEqual(len(changes["modified"]), 0)
 
 
 if __name__ == "__main__":
