@@ -2,6 +2,26 @@
 
 本文档按仓库 tag 记录版本变化。
 
+## v1.0.8
+
+发布时间点：tag `v1.0.8`
+
+主要变化：
+- 拆分 tui.py（原 2950 行）为 6 个职责单一的模块，核心文件缩减至 601 行
+- 提取 themes.py（主题 CSS）、widgets.py（UI 组件）、preview.py（diff 纯函数）
+- 提取 tui_forms.py（表单 CRUD 与设置管理）和 tui_navigation.py（焦点导航与表格刷新）
+- 为表单加载方法添加 KeyError 防护，防止外部修改配置后 TUI 崩溃
+- 用 editor-field CSS class 替代硬编码的 38 个 widget ID
+- 补充错误路径和 diff 边界测试（+7 个测试用例）
+- 交换 F8/F9 快捷键（F8=提供方，F9=当前生效模型）
+- 补充 MIT 许可证与 README 说明
+- 修正顶部摘要与页签菜单的焦点导航
+
+关联提交：
+- `6ff2a56` `refactor: 拆分 tui.py 为多个职责单一的模块`
+- `7673099` `docs: 补充 MIT 许可证与 README 说明`
+- `cd72064` `fix: 修正顶部摘要与页签菜单的焦点导航`
+
 ## v1.0.7
 
 发布时间点：tag `v1.0.7`
